@@ -1,0 +1,64 @@
+version: '3.4'
+
+volumes:
+  db:
+
+services:
+  server-dev:
+    image: omibot:latest
+    build:
+      context: ./docker/server/
+    ports:
+      - 5000:5000
+      - 5678:5678
+    depends_on:
+      - db
+    command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 -m flask run --debug --host 0.0.0.0 --port 5000"]
+    env_file: .env-dev
+    volumes: 
+      - ./data:/app/data
+      - ./docker/server:/app
+    environment:
+      FLASK_APP: server.py
+
+  worker-dev:
+    image: omibot:latest
+    depends_on:
+      - redis
+    links:
+      - redis
+    command: python worker.py 
+    env_file: .env-dev
+    environment:
+      IS_DOCKER: 1
+    volumes:
+      - ./data:/app/data
+      - ./docker/server:/app
+    ports:
+      - 5679:5679
+
+  redis:
+    image: redis
+    ports: 
+      - 6379:6379
+
+  dashboard-dev:
+    build: docker/worker_dashboard
+    ports:
+      - 5555:5555
+    depends_on:
+      - redis
+    command: rq-dashboard --port 5555 --redis-url redis://redis:6379/0
+
+  db:
+    image: mariadb:10.8.2
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db:/var/lib/mariadb
+      - ./docker/database/init_db.sh:/docker-entrypoint-initdb.d/init.sh
+    ports:
+      - 3306:3306

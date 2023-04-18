@@ -1,0 +1,4 @@
+// .vscode/settings.json
+{
+    "python.formatting.provider": "black"
+}

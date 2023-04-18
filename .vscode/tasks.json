@@ -1,0 +1,119 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "blacken",
+			"command": "black",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"args": [
+				"${workspaceFolder}/docker"
+			]
+		},
+		{
+			"type": "shell",
+			"label": "bandit-security-audit",
+			"command": "bandit",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"args": [
+				"-r",
+				"docker",
+				"-ll",
+				"--exit-zero"
+			]
+		},
+		{
+			"type": "shell",
+			"label": "export-requirements-server",
+			"command": "pigar",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"args": [
+				"gen",
+				"-f",
+				"docker/server/requirements.txt",
+				"docker/server"
+			]
+		},
+		{
+			"type": "shell",
+			"label": "typecheck",
+			"command": "mypy",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"dependsOn": [
+				"blacken",
+				"bandit-security-audit"
+			],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new",
+				"focus": true
+			},
+			"args": [
+				"${workspaceFolder}/docker",
+				"--no-namespace-packages",
+				"--ignore-missing-imports"
+			]
+		},
+		{
+			"type": "docker-build",
+			"label": "",
+			"platform": "python",
+			"dockerBuild": {
+				"tag": "omibot:latest",
+				"dockerfile": "${workspaceFolder}/docker/server/Dockerfile",
+				"context": "${workspaceFolder}/docker/server/",
+				"pull": true
+			}
+		},
+		{
+			"type": "docker-run",
+			"label": "docker-run: debug",
+			"dependsOn": [
+				"docker-build"
+			],
+			"dockerRun": {
+				"env": {
+					"FLASK_APP": "docker/server/server.py"
+				}
+			},
+			"python": {
+				"args": [
+					"run",
+					"--no-debugger",
+					"--no-reload",
+					"--host",
+					"0.0.0.0",
+					"--port",
+					"5002"
+				],
+				"module": "flask"
+			}
+		},
+		{
+			"type": "docker-build",
+			"label": "docker-build",
+			"platform": "python",
+			"dockerBuild": {
+				"tag": "omidiary:latest",
+				"dockerfile": "${workspaceFolder}/Dockerfile",
+				"context": "${workspaceFolder}",
+				"pull": true
+			}
+		}
+	]
+}
