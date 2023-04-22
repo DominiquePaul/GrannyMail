@@ -1,0 +1,5 @@
+encrypt:
+	# Encrypting files
+	gcloud kms encrypt --plaintext-file=.env --ciphertext-file=.env.enc --location=europe-west1 --keyring=goldenbook_key --key=goldenbook_key
+	gcloud kms encrypt --plaintext-file=dev.env --ciphertext-file=dev.env.enc --location=europe-west1 --keyring=goldenbook_key --key=goldenbook_key
+	gcloud kms encrypt --plaintext-file=prod.yaml --ciphertext-file=prod.yaml.enc --location=europe-west1 --keyring=goldenbook_key --key=goldenbook_key

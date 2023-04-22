@@ -15,6 +15,7 @@ GrandmaBot uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsapp
 ## Current priority
 
 - [x] Add database for incoming messages
+- [x] Move to a container based setup
 - [ ] Have a working MVP for a single voice memo
 - [ ] Allow user to select multiple messages
 - [ ] User can manually change message and send it back for mailing
@@ -24,12 +25,15 @@ GrandmaBot uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsapp
 
 - [ ] User signup
 - [ ] User can add photos to message
-- [ ] Chat interface so that user can make suggestions to previous text
-- [ ] Move to a container based setup
-- [ ] Write flask tests
+- [ ] Chat interface so that user can make suggestions to a previous letter draft in a chatgpt like style
+- [ ] Change from pip to poetry
+- [ ] Switch from running whisper locally to using the whisper API (performance speedup)
+
 - [ ] Configure launch.json file for faster debugging requests (flask app is launched and then another script is called)
-- [ ] Add encryption to database?
-- [ ] Refactor database to use SLQalchemy
+
+## Future Future
+
+- [ ] Write flask tests
 
 # Installation / setup instructions
 

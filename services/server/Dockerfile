@@ -1,39 +1,62 @@
 # For more information, please refer to https://aka.ms/vscode-docker-python
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bullseye as base
+# Turns off buffering for easier container logging
+# Keeps Python from generating .pyc files in the container
+ENV PYTHONFAULTHANDLER=1 \
+    PYTHONHASHSEED=random \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # poetry
+    # https://python-poetry.org/docs/configuration/#using-environment-variables
+    POETRY_VERSION=1.4.2 \
+    # make poetry install to this location
+    POETRY_HOME="/opt/poetry" \
+    # make poetry create the virtual environment in the project's root
+    # it gets named `.venv`
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    # do not ask any interactive question
+    POETRY_NO_INTERACTION=1 \
+    \
+    # paths
+    # this is where our requirements + virtual environment will live
+    PYSETUP_PATH="/opt/pysetup" \
+    VENV_PATH="/opt/pysetup/.venv"
+
+# prepend poetry and venv to path
+ENV PATH="$POETRY_HOME/bin:$VENV_PATH/bin:$PATH"
+
+
+FROM base as builder-base
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y \
+    # deps for installing poetry
+    curl \
+    # deps for building python deps
+    build-essential
+    
+RUN curl -sSL https://install.python-poetry.org | python -
+WORKDIR $PYSETUP_PATH
+COPY poetry.lock pyproject.toml ./
+
+# install runtime deps - uses $POETRY_VIRTUALENVS_IN_PROJECT internally
+RUN poetry install --no-root --only main
+
+
+# `development` image is used during development / testing
+FROM base as development
+WORKDIR $PYSETUP_PATH
+
+# copy in our built poetry + venv
+COPY --from=builder-base $POETRY_HOME $POETRY_HOME
+COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
+
+# quicker install as runtime deps are already installed
+RUN poetry install --no-root 
+
+# will become mountpoint of our code
+WORKDIR /app 
+COPY *.py  .
+COPY whisper_models . 
 
 EXPOSE 5000
-
-# Keeps Python from generating .pyc files in the container
-ENV PYTHONDONTWRITEBYTECODE=1
-
-# Turns off buffering for easier container logging
-ENV PYTHONUNBUFFERED=1
-
-# This is a package that is uses for the OpenAI Whisper package that is not imported via pip
-# We install gunicorn explicitly as it is used to run the server and not included in the requirements.txt by pigar
-RUN apt-get update && apt-get upgrade && apt-get install -y ffmpeg && apt-get install -y git && pip install gunicorn
-
-# this command takes for ages every build and we need it for openai and whisper
-RUN pip install torch==2.0.0 && pip install transformers==4.27.2
-
-# Install from the requirements.txt 
-# We run this before copying everything else as changes are cached. We don't
-# want to reinstall dependencies if a random other file changes.
-COPY requirements.txt .
-RUN pip install --upgrade pip && python -m pip install -r requirements.txt
-
-# Make the directory the working directory for subsequent commands
-WORKDIR /app
-# Place the application components in our app dir (a dir below the root dir)
-COPY . /app
-
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-# chown hands everything over to the 'app' user
-RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /app
-# Subsequent commands, either in this Dockerfile or in a
-# docker-compose.yml, will run as user 'app'
-USER appuser
-
-
-
+EXPOSE 5678

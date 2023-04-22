@@ -12,11 +12,12 @@ import database_utils as dbu
 
 load_dotenv()
 blob_manager = dbu.BlobStorage()
+sql_client = dbu.Supabase_sql_client()
 
 
 # the whisper model that will transcribe the voice memo. Options are [tiny, base, small, medium,
 MODEL_SIZE = os.environ["MODEL_SIZE"]
-MODEL = whisper.load_model(MODEL_SIZE)
+MODEL = whisper.load_model(MODEL_SIZE, download_root="whisper_models")
 openai.api_key = os.environ["OPENAI_KEY"]
 
 SYSTEM_INSTRUCTIONS = "Du bist ein hilfreicher und freundlicher assistent, der nutzern dabei hilft unstruktierte notizen zu einem Brief für ihre Oma zusammenzufassen"
@@ -48,7 +49,7 @@ def send_message(msg: str, phone_number: str, save_to_db=True):
     )
     # optionally log the message to the messages database
     if save_to_db:
-        dbu.add_message(
+        sql_client.add_message(
             phone_number=phone_number,
             media_type="text",
             sent_by="system",
@@ -77,7 +78,7 @@ def send_attachment(
                 "Need to supply letter_uid if save_to_db is True, but none was passed"
             )
         else:
-            dbu.add_message(
+            sql_client.add_message(
                 phone_number=phone_number,
                 media_type=public_media_url[-3:],
                 sent_by="system",
@@ -106,7 +107,7 @@ def transcribe_voice_memo(uid: str) -> str:
         str: The transcribed message of the audio file.
     """
     # check whether the message really is a audio file
-    message_info = dbu.get_message_by_uid(uid)
+    message_info = sql_client.get_message_by_uid(uid)
     assert (
         message_info["media_type"] == "audio"
     ), "Message is not an audio file but is attempted to be transcribed"
@@ -124,7 +125,7 @@ def transcribe_voice_memo(uid: str) -> str:
         transcript_text += sgmnt["text"]
 
     # update the database entry to reflect which type of transcription has been applied
-    dbu.update_message_by_uid(
+    sql_client.update_message_by_uid(
         uid,
         {
             "transcription_level": MODEL_SIZE,
@@ -166,7 +167,7 @@ def summarise_text(input_text: str, phone_number: str, system_instructions:str=S
 
     # remove first word
     if store_and_send_result:
-        letter_uid = dbu.add_letter_content(phone_number=phone_number, letter_content=summary, letter_input=input_text)
+        letter_uid = sql_client.add_letter_content(phone_number=phone_number, letter_content=summary, letter_input=input_text)
         letter_bytes = pdf_gen.create_letter_pdf_as_bytes(summary)
         blob_manager.save_letter(letter_bytes, letter_uid)
         public_url = blob_manager.set_letter_pdf_public(letter_uid)
@@ -188,7 +189,7 @@ def edit_letter_draft(edit_text:str, phone_number:str) -> str:
     # 2. original input text
     # 3. last edit
     # 4. Edit request
-    last_letter_info = dbu.get_last_user_letter_content(phone_number)
+    last_letter_info = sql_client.get_last_user_letter_content(phone_number)
     input_text = last_letter_info["letter_input"]
     last_draft = last_letter_info["letter_content"]
     EDIT_PROMPT = "Please make the following changes to the previous text: \n\n"
@@ -211,7 +212,7 @@ def edit_letter_draft(edit_text:str, phone_number:str) -> str:
     updated_draft = resp["choices"][0]["message"]["content"]
 
     # store and send new draft
-    letter_uid = dbu.add_letter_content(phone_number=phone_number, letter_content=updated_draft, letter_input=input_text, edit_text=edit_text")
+    letter_uid = sql_client.add_letter_content(phone_number=phone_number, letter_content=updated_draft, letter_input=input_text, edit_text=edit_text)
     letter_bytes = pdf_gen.create_letter_pdf_as_bytes(updated_draft)
     blob_manager.save_letter(letter_bytes, letter_uid)
     public_url = blob_manager.set_letter_pdf_public(letter_uid)

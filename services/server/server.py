@@ -23,6 +23,7 @@ REDIS_QUEUE = Queue(connection=r, default_timeout=3600)
 load_dotenv()
 
 blob_manager = dbu.BlobStorage()
+sql_client = dbu.Supabase_sql_client()
 pingen_manager = Pingen()
 
 app = Flask(__name__)
@@ -77,7 +78,7 @@ def send_all_addressees(phone_number: str) -> str:
         str: XML formatted message that can be sent to the user
     """
     # Get all addressees associated with users phone number from database
-    addressees = dbu.get_users_address_book(phone_number)
+    addressees = sql_client.get_users_address_book(phone_number)
     if len(addressees) == 0:
         return create_response(
             "You don't have any addressees yet. You can create one by sending '/new-addressee'.",
@@ -109,7 +110,7 @@ def create_response(message: str, phone_number: str | None = None) -> str:
     """
     assert len(message) <= 1600, f"Message is too long. Max length is 1600 characters. Your message has {len(message)} characters."
     if isinstance(phone_number, str):
-        dbu.add_message(
+        sql_client.add_message(
             sent_by="system",
             phone_number=phone_number,
             media_type="text",
@@ -151,7 +152,7 @@ def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> str:
         n_memos (int): _description_
     """
     # get data for the last memos from data
-    memos = dbu.get_last_x_memos(values["WaId"], n_memos)
+    memos = sql_client.get_last_x_memos(values["WaId"], n_memos)
     response = ""
     if len(memos) == 0:
         # Inform user that they need to send memos first
@@ -252,7 +253,7 @@ def fetch_closest_addressee_match(fuzzy_string: str, phone_number: str) -> str |
     Returns:
         str|dict: In case of an error a string with an error message is returned that can be passed on to the user. Otherwise a dictionary with the address details of the closest match is returned.
     """
-    addressees = dbu.fetch_users_address_book(phone_number)
+    addressees = sql_client.fetch_users_address_book(phone_number)
     if len(addressees) == 0:
         return "You have not added any addressees yet. You can use the '/new-addressee' command to add a new addressee."
     # get the closest match
@@ -273,7 +274,7 @@ def process_message():
     msg_type = get_message_type(request.values)
     msg = request.values.get("Body", None)
     # log message to database
-    uid = dbu.add_message(
+    uid = sql_client.add_message(
         sent_by="user",
         phone_number=request.values["WaId"],
         media_type=msg_type,
@@ -320,7 +321,7 @@ def process_message():
                 else:
                     ### Create
                     # fetch latest content
-                    last_letter = dbu.get_last_user_letter_content(
+                    last_letter = sql_client.get_last_user_letter_content(
                         request.values["WaId"]
                     )
                     last_letter_uid = last_letter["uid"]
@@ -333,7 +334,7 @@ def process_message():
                     # save pdf to blob
                     blob_manager.save_letter(letter_bytes, last_letter_uid)
                     # update sql to reflect that a pdf does exist in blob storage
-                    dbu.update_letter_content(
+                    sql_client.update_letter_content(
                         last_letter_uid, update_vals={"pdf_created": True}
                     )
 
@@ -354,7 +355,7 @@ def process_message():
                     return create_response(msg)
             elif first_word == "/confirm":
                 # Requires the last message to have been '/send'
-                last_message = dbu.get_last_nth_user_message(
+                last_message = sql_client.get_last_nth_user_message(
                     phone_number=request.values["WaId"], n=1
                 )
                 if last_message.sep(" ")[0] != "/send":
@@ -364,7 +365,7 @@ def process_message():
                 else:
                     # send the last summary as a letter to the addressee
                     # get the last letter as bytes
-                    last_letter = dbu.get_last_user_letter_content(
+                    last_letter = sql_client.get_last_user_letter_content(
                         request.values["WaId"]
                     )
                     last_letter_uid = last_letter["uid"]
@@ -390,7 +391,7 @@ def process_message():
                 return create_response(msg, request.values["WaId"])
             elif first_word == "/confirm-address":
                 # check whether last message was an attempt to add an address
-                last_message = dbu.get_last_nth_user_message(
+                last_message = sql_client.get_last_nth_user_message(
                     phone_number=request.values["WaId"], n=1
                 )
                 last_message = last_message["message_content"]
@@ -400,7 +401,7 @@ def process_message():
                     )
                 # add address from last message to database
                 parsed_address = parse_address_message(last_message)
-                dbu.add_address_to_user_addressbook(
+                sql_client.add_address_to_user_addressbook(
                     request.values["WaId"], parsed_address
                 )
                 return create_response(
@@ -443,7 +444,7 @@ def send_transcript(uid: str):
         uid (str): unique identifier of the message that was transcribed
     """
     # get the transcript from the database
-    message_info = dbu.get_message_by_uid(uid)
+    message_info = sql_client.get_message_by_uid(uid)
     # send the transcript to the user
     message = (
         "Your voice memo has been transcribed. Here is what you said: \n\n"

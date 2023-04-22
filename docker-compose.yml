@@ -5,21 +5,17 @@ volumes:
 
 services:
   server:
-    image: omibot:latest
-    build:
-      context: ./docker/server/
+    image: grannymail:v2
     ports:
       - 5000:5000
-    depends_on:
-      - db
     command: ["gunicorn", "--bind", "0.0.0.0:5000", "server:app"]
     env_file: .env
     volumes: 
       - ./data:/app/data
-      - ./docker/server:/app
+      - ./services/server:/app
 
   worker:
-    image: omibot:latest
+    image: grannymail:v2
     depends_on:
       - redis
       - server
@@ -31,7 +27,7 @@ services:
       IS_DOCKER: 1
     volumes:
       - ./data:/app/data
-      - ./docker/server:/app
+      - ./services/server:/app
 
   redis:
     image: redis
@@ -39,22 +35,9 @@ services:
       - 6379:6379
 
   dashboard:
-    build: docker/worker_dashboard
+    build: services/worker_dashboard
     ports:
       - 5555:5555
     depends_on:
       - redis
     command: rq-dashboard --port 5555 --redis-url ${REDIS_URL}
-
-  db:
-    image: mariadb:10.8.2
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-    volumes:
-      - db:/var/lib/mariadb
-      - ./docker/database/init_db.sh:/docker-entrypoint-initdb.d/init.sh
-    ports:
-      - 3306:3306

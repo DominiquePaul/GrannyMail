@@ -1,5 +1,0 @@
-[mypy]
-strict = true
-modules = ["*.py"]
-warn_unused_configs = true
-mypy_path = ["./docker/server"]

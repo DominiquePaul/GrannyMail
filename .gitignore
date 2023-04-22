@@ -1,4 +1,6 @@
 # added by Dominique
+prod.yaml
+whisper_models/
 .DS_Store
 *.env
 data

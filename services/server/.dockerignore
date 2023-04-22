@@ -1,0 +1,6 @@
+__pycache__
+data
+Dockerfile
+**/__pycache__
+**/data
+**/Dockerfile*
