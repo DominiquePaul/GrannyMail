@@ -2,9 +2,7 @@ version: '3.4'
 
 services:
   server-dev:
-    image: omibot:latest
-    build:
-      context: ./services/server/
+    image: grannymail:v2
     ports:
       - 5000:5000
       - 5678:5678
@@ -17,7 +15,7 @@ services:
       FLASK_APP: server.py
 
   worker-dev:
-    image: omibot:latest
+    image: grannymail:v2
     depends_on:
       - redis
     links:

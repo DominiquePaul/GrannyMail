@@ -23,6 +23,7 @@ GrandmaBot uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsapp
 
 ## Future
 
+- [ ]
 - [ ] User signup
 - [ ] User can add photos to message
 - [ ] Chat interface so that user can make suggestions to a previous letter draft in a chatgpt like style

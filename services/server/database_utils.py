@@ -66,6 +66,8 @@ class Supabase_sql_client:
         transcription_level: str | None = None,
         attachment_uid: str | None = None,
     ) -> str:
+        if uid is None:
+            uid = str(uuid.uuid4())
         data = {"sent_by": sent_by,
                 "phone_number": phone_number,
                 "media_type": media_type,
