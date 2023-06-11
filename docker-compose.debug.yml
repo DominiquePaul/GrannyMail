@@ -7,10 +7,10 @@ services:
       - 5000:5000
       - 5678:5678
     command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 -m flask run --debug --host 0.0.0.0 --port 5000"]
-    env_file: .env
+    env_file: dev.env
     volumes: 
       - ./data:/app/data
-      - ./services/server:/app/
+      - ./src/server:/app/
     restart: always
     environment:
       FLASK_APP: server.py
@@ -22,12 +22,12 @@ services:
     links:
       - redis
     command: python worker.py 
-    env_file: .env
+    env_file: dev.env
     environment:
       IS_DOCKER: 1
     volumes:
       - ./data:/app/data
-      - ./services/server:/app
+      - ./src/server:/app
     ports:
       - 5679:5679
 
@@ -37,7 +37,7 @@ services:
       - 6379:6379
 
   dashboard-dev:
-    build: services/worker_dashboard
+    build: src/worker_dashboard
     ports:
       - 5555:5555
     depends_on:

@@ -2,41 +2,37 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-311/) 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) 
 
-# Grandma communication 👵🏼
+# Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
 
-GrandmaBot is a whatsapp tool that enables easy communication with people who cannot use whatsapp and prefer pen and paper. Share your thoughts via voice message and grandma bot will summarise them as a letter and send it to your loved one by mail.
+WhatsGranny is a whatsapp tool that enables easy communication with people who cannot use whatsapp and prefer pen and paper. Share your thoughts via voice message and WhatsGranny will summarise them as a letter and send it to your loved one by mail.
 
 # About
 
-GrandmaBot uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsapp) for messaging via whatsapp, [Whisper](https://github.com/openai/whisper) for transcription, and GPT for summarisation.
+WhatsGranny uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsapp) for messaging via whatsapp, [Whisper](https://github.com/openai/whisper) for transcription, and GPT for summarisation.
 
 # Feature roadmap
 
 ## Current priority
 
-- [x] Add database for incoming messages
-- [x] Move to a container based setup
-- [ ] Have a working MVP for a single voice memo
-- [ ] Allow user to select multiple messages
+### Have a working MVP for a single voice memo
+- [ ] Rearrange folder structure
+- [ ] Write tests for the intelligence module
+- [ ] Move to whisper API instead of self-hosting
+- [ ] Ideally only run with one service (no task-queue)
+  
+### Crucial improvements
 - [ ] User can manually change message and send it back for mailing
-- [ ] Add mailing feature
 
-## Future
+### Future features
 
-- [ ]
 - [ ] User signup
 - [ ] User can add photos to message
-- [ ] Chat interface so that user can make suggestions to a previous letter draft in a chatgpt like style
 - [ ] Change from pip to poetry
-- [ ] Switch from running whisper locally to using the whisper API (performance speedup)
-
 - [ ] Configure launch.json file for faster debugging requests (flask app is launched and then another script is called)
 
-## Future Future
-
-- [ ] Write flask tests
-
 # Installation / setup instructions
+
+## First time instructions
 
 If you want to run the app yourself then follow these instructions.
 
@@ -73,6 +69,13 @@ Set the `GOOGLE_APPLICATION_CREDENTIALS`environment variable to the location of 
 
 You can see alterntive options for authentication, such as using your console to grant automatic access for apps running on your computer (not docker) [here](https://cloud.google.com/docs/authentication/provide-credentials-adc#how-to).
 
+
+## Quickstart 
+
+1. Send "join military-rapidly" to Twilio
+2. `ngrok http 5000` -> Copy the url into the twilio console, appending `/message`
+3. `make dev`
+4. Start debugging the server with VS Code debug
 
 # Pinned resources
 

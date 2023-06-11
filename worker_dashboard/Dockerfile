@@ -1,5 +1,5 @@
 FROM python:3.11-slim-bullseye
-RUN apt-get update && apt-get upgrade && pip install --upgrade pip && apt-get install -y git
+RUN apt-get update && apt-get upgrade -y && pip install --upgrade pip  && apt-get install -y git
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1

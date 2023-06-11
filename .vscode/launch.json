@@ -10,10 +10,10 @@
             "request": "attach",
             "port": 5678,
             "host": "localhost",
-            // "preLaunchTask": "docker-run: debug",
+            // "preLaunchTask": "setup-dev-containers",
             "pathMappings": [
                 {
-                    "localRoot": "${workspaceFolder}/services/server/",
+                    "localRoot": "${workspaceFolder}/src/server/",
                     "remoteRoot": "/app"
                 }
             ]
@@ -27,7 +27,7 @@
             "preLaunchTask": "docker-run: debug",
             "pathMappings": [
                 {
-                    "localRoot": "${workspaceFolder}/services/server/",
+                    "localRoot": "${workspaceFolder}/src/server/",
                     "remoteRoot": "/app"
                 },
             ],
@@ -39,7 +39,7 @@
             "request": "launch",
             "module": "flask",
             "env": {
-                "FLASK_APP": "services/server/server.py",
+                "FLASK_APP": "src/server/server.py",
                 "FLASK_DEBUG": "1"
             },
             "args": [

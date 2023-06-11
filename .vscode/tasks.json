@@ -2,6 +2,21 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "setup-dev-containers",
+			"type": "shell",
+			"command": "make dev",
+			"group": {
+			  "kind": "build",
+			  "isDefault": true
+			},
+			"presentation": {
+			  "reveal": "always",
+			  "panel": "shared"
+			}
+		},
+
+
+		{
 			"type": "shell",
 			"label": "blacken",
 			"command": "black",
@@ -82,7 +97,7 @@
 		},
 		{
 			"type": "docker-run",
-			"label": "docker-run: debug",
+			"label": "docker-run: debug-old",
 			"dependsOn": [
 				"docker-build"
 			],

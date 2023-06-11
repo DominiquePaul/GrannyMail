@@ -2,10 +2,11 @@ import re
 import uuid
 import pickle
 import os
-import mysql.connector as database
-from typing import Any
-from google.cloud import storage
 from io import BytesIO
+from typing import Any
+
+import mysql.connector as database
+from google.cloud import storage
 from supabase import create_client, Client
 
 
