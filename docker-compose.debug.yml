@@ -10,7 +10,8 @@ services:
     env_file: .env
     volumes: 
       - ./data:/app/data
-      - ./services/server:/app
+      - ./services/server:/app/
+    restart: always
     environment:
       FLASK_APP: server.py
 

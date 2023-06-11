@@ -1,0 +1,13 @@
+steps:
+- name: gcr.io/cloud-builders/gcloud
+  args: ['kms', 'decrypt', '--ciphertext-file=prod.yaml.enc', '--plaintext-file=prod.yaml', '--location=europe-west1', '--keyring=goldenbook_key', '--key=goldenbook_key']
+### Deploy redis task queue
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args: ['run', 'deploy', 'goldenbook', '--image', 'gcr.io/personal-255411/grannymail:latest', '--region', 'europe-west1', '--env-vars-file=prod.yaml', '--allow-unauthenticated']
+
+## Deploy server
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args: ['run', 'deploy', 'goldenbook', '--image', 'gcr.io/personal-255411/grannymail:latest', '--region', 'europe-west1', '--env-vars-file=prod.yaml', '--allow-unauthenticated'] 
+

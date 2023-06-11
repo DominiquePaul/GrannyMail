@@ -11,7 +11,7 @@
 				"focus": true
 			},
 			"args": [
-				"${workspaceFolder}/docker"
+				"${workspaceFolder}/services"
 			]
 		},
 		{
@@ -25,7 +25,7 @@
 			},
 			"args": [
 				"-r",
-				"docker",
+				"services",
 				"-ll",
 				"--exit-zero"
 			]
@@ -42,8 +42,8 @@
 			"args": [
 				"gen",
 				"-f",
-				"docker/server/requirements.txt",
-				"docker/server"
+				"services/server/requirements.txt",
+				"services/server"
 			]
 		},
 		{
@@ -64,7 +64,7 @@
 				"focus": true
 			},
 			"args": [
-				"${workspaceFolder}/docker",
+				"${workspaceFolder}/services",
 				"--no-namespace-packages",
 				"--ignore-missing-imports"
 			]
@@ -75,8 +75,8 @@
 			"platform": "python",
 			"dockerBuild": {
 				"tag": "omibot:latest",
-				"dockerfile": "${workspaceFolder}/docker/server/Dockerfile",
-				"context": "${workspaceFolder}/docker/server/",
+				"dockerfile": "${workspaceFolder}/services/server/Dockerfile",
+				"context": "${workspaceFolder}/services/server/",
 				"pull": true
 			}
 		},
@@ -88,7 +88,7 @@
 			],
 			"dockerRun": {
 				"env": {
-					"FLASK_APP": "docker/server/server.py"
+					"FLASK_APP": "services/server/server.py"
 				}
 			},
 			"python": {

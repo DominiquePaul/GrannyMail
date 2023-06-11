@@ -58,6 +58,7 @@ def send_message(msg: str, phone_number: str, save_to_db=True):
     print(f"Add this type to the send message function {type(message)}")
     return message
 
+
 def send_attachment(
     public_media_url: str,
     phone_number: str,
@@ -71,7 +72,9 @@ def send_attachment(
         to=f"whatsapp:+{phone_number}",
         media_url=public_media_url,
     )
-    assert message.error_code is None, f"Twilio message failed with error code {message.error_code}: {message.error_message}"
+    assert (
+        message.error_code is None
+    ), f"Twilio message failed with error code {message.error_code}: {message.error_message}"
     if save_to_db:
         if letter_uid is None:
             raise ValueError(
@@ -86,11 +89,12 @@ def send_attachment(
                 attachment_uid=letter_uid,
             )
 
+
 def temp_save_memo_locally(file_bytes: bytes) -> str:
     if not os.path.exists("/tmp"):
         os.mkdir("/tmp")
-    temp = '/tmp/audio.ogg'
-    with open(temp, 'wb') as f:
+    temp = "/tmp/audio.ogg"
+    with open(temp, "wb") as f:
         f.write(file_bytes)
     return temp
 
@@ -137,7 +141,13 @@ def transcribe_voice_memo(uid: str) -> str:
     return transcript_text
 
 
-def summarise_text(input_text: str, phone_number: str, system_instructions:str=SYSTEM_INSTRUCTIONS, prompt: str = PROMPT, store_and_send_result=True) -> str:
+def summarise_text(
+    input_text: str,
+    phone_number: str,
+    system_instructions: str = SYSTEM_INSTRUCTIONS,
+    prompt: str = PROMPT,
+    store_and_send_result=True,
+) -> str:
     """summarises a text using the openai davinci API
 
     Args:
@@ -154,9 +164,9 @@ def summarise_text(input_text: str, phone_number: str, system_instructions:str=S
     resp = openai.ChatCompletion.create(
         model=os.environ["GPT_MODEL"],
         messages=[
-        {"role": "system", "content": system_instructions},
-        {"role": "user", "content": prompt + input_text},
-                  ],
+            {"role": "system", "content": system_instructions},
+            {"role": "user", "content": prompt + input_text},
+        ],
         max_tokens=3000,
         temperature=0.2,
         stream=False,
@@ -167,7 +177,16 @@ def summarise_text(input_text: str, phone_number: str, system_instructions:str=S
 
     # remove first word
     if store_and_send_result:
-        letter_uid = sql_client.add_letter_content(phone_number=phone_number, letter_content=summary, letter_input=input_text)
+        # get user_id
+        user_id = sql_client.get_user_uid_from_phone(phone_number)
+        letter_data = {
+            "user_id": user_id,
+            "cost_eur": None,
+            "letter_input": input_text,
+            "letter_content": summary,
+            "prompt": prompt,
+        }
+        letter_uid = sql_client.add_letter(letter_data)
         letter_bytes = pdf_gen.create_letter_pdf_as_bytes(summary)
         blob_manager.save_letter(letter_bytes, letter_uid)
         public_url = blob_manager.set_letter_pdf_public(letter_uid)
@@ -177,28 +196,31 @@ def summarise_text(input_text: str, phone_number: str, system_instructions:str=S
             phone_number=phone_number,
             letter_uid=letter_uid,
         )
-        send_message(msg="Here is a draft. You can make changes in the style of: 'hello doriss' -> 'Dear Doris' or just share instructions on how to change the text. Separate each command by a linebreak for best results.",
-                     phone_number=phone_number)
+        send_message(
+            msg="Here is a draft. You can make changes in the style of: 'hello doriss' -> 'Dear Doris' or just share instructions on how to change the text. Separate each command by a linebreak for best results.",
+            phone_number=phone_number,
+        )
         blob_manager.set_letter_pdf_private(letter_uid)
 
     return summary
 
-def edit_letter_draft(edit_text:str, phone_number:str) -> str:
-    # we need: 
+
+def edit_letter_draft(edit_text: str, phone_number: str) -> str:
+    # we need:
     # 1. original prompt
     # 2. original input text
     # 3. last edit
     # 4. Edit request
-    last_letter_info = sql_client.get_last_user_letter_content(phone_number)
+    last_letter_info = sql_client.get_users_last_letter_content(phone_number)
     input_text = last_letter_info["letter_input"]
     last_draft = last_letter_info["letter_content"]
     EDIT_PROMPT = "Please make the following changes to the previous text: \n\n"
-    messages= [
+    messages = [
         {"role": "system", "content": SYSTEM_INSTRUCTIONS},
         {"role": "user", "content": PROMPT + input_text},
-        {"role": "assistant", "content": PROMPT + last_draft},
+        {"role": "assistant", "content": last_draft},
         {"role": "user", "content": EDIT_PROMPT + edit_text},
-                  ]
+    ]
 
     start = time.time()
     resp = openai.ChatCompletion.create(
@@ -209,11 +231,19 @@ def edit_letter_draft(edit_text:str, phone_number:str) -> str:
         stream=False,
     )
     print(f"API call took {time.time() - start} seconds.")
-    updated_draft = resp["choices"][0]["message"]["content"]
+    updated_content = resp["choices"][0]["message"]["content"]
 
     # store and send new draft
-    letter_uid = sql_client.add_letter_content(phone_number=phone_number, letter_content=updated_draft, letter_input=input_text, edit_text=edit_text)
-    letter_bytes = pdf_gen.create_letter_pdf_as_bytes(updated_draft)
+    user_id = sql_client.get_user_uid_from_phone(phone_number)
+    letter_data = {
+        "user_id": user_id,
+        "letter_input": last_draft,
+        "prompt": EDIT_PROMPT,
+        "edit_text": edit_text,
+        "letter_content": updated_content,
+    }
+    letter_uid = sql_client.add_letter(letter_data)
+    letter_bytes = pdf_gen.create_letter_pdf_as_bytes(updated_content)
     blob_manager.save_letter(letter_bytes, letter_uid)
     public_url = blob_manager.set_letter_pdf_public(letter_uid)
     send_attachment(
@@ -221,11 +251,14 @@ def edit_letter_draft(edit_text:str, phone_number:str) -> str:
         phone_number=phone_number,
         letter_uid=letter_uid,
     )
-    send_message(msg="Here is the new draft. You can keep making more changes if you want to. When you're ready to send it just type '/send addressee_name'." ,
-                 phone_number=phone_number)
+    send_message(
+        msg="Here is the new draft. You can keep making more changes if you want to. When you're ready to send it just type '/send addressee_name'.",
+        phone_number=phone_number,
+    )
     blob_manager.set_letter_pdf_private(letter_uid)
-    
-    return updated_draft
+
+    return updated_content
+
 
 def process_voice_memo(uid: str, media_url: str) -> None:
     """Saves the voice memo to blob storage and then transcribes it
@@ -242,4 +275,3 @@ def process_voice_memo(uid: str, media_url: str) -> None:
 if __name__ == "__main__":
     # openai.Model.list()
     summarise_text("This is a test", "41768017796")
-

@@ -1,4 +1,7 @@
 # added by Dominique
+
+dev.yaml
+stage.yaml
 prod.yaml
 whisper_models/
 .DS_Store

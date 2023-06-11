@@ -58,7 +58,16 @@ Run the database using docker-compose. This command will pull the necessary imag
 
 Memos and pdfs can be stored locally, but to send attachments to users via twilio the respective attachment needs to be made available at a publicly accessible url at least for a short time. Since this is not possible with local files you need at least some online solution. This repo uses GCP. You can of course implement another solution but for now GCP presumably is the easiest way to get the repo running as the code is alraedy implemented.
 
-Create service account credentials using the instructions [here](https://cloud.google.com/iam/docs/keys-create-delete#iam-service-account-keys-create-console) and place them in the server folder.
+Create service account credentials using the instructions [here](https://cloud.google.com/iam/docs/keys-create-delete#iam-service-account-keys-create-console) and place them in the server folder 
+run these commands:
+```
+gcloud config set project grannymail
+gcloud iam service-accounts create general-sa --description="general service account for the app" --display-name="general_sa_display_name"
+gcloud iam service-accounts keys create gcloud_private_key.json --iam-account=general-sa@grannymail.iam.gserviceaccount.com
+gcloud projects add-iam-policy-binding grannymail \
+    --member="serviceAccount:general-sa@grannymail.iam.gserviceaccount.com" \
+    --role="roles/storage.admin"
+```
 
 Set the `GOOGLE_APPLICATION_CREDENTIALS`environment variable to the location of your json file. 
 

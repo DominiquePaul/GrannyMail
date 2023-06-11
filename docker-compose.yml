@@ -1,18 +1,12 @@
 version: '3.4'
 
-volumes:
-  db:
-
 services:
   server:
     image: grannymail:v2
     ports:
       - 5000:5000
-    command: ["gunicorn", "--bind", "0.0.0.0:5000", "server:app"]
-    env_file: .env
-    volumes: 
-      - ./data:/app/data
-      - ./services/server:/app
+    command: ["gunicorn", "--bind", "0.0.0.0:80", "server:app"]
+    env_file: prod.yaml
 
   worker:
     image: grannymail:v2
@@ -22,12 +16,9 @@ services:
     links:
       - redis
     command: python worker.py 
-    env_file: .env
+    env_file: prod.yaml
     environment:
       IS_DOCKER: 1
-    volumes:
-      - ./data:/app/data
-      - ./services/server:/app
 
   redis:
     image: redis

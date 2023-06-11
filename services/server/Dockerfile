@@ -50,6 +50,8 @@ WORKDIR $PYSETUP_PATH
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 
+RUN apt-get update && apt-get install -y ffmpeg 
+
 # quicker install as runtime deps are already installed
 RUN poetry install --no-root 
 

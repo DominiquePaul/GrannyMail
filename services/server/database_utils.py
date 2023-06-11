@@ -1,15 +1,13 @@
-import re 
+import re
 import uuid
 import pickle
 import os
-from dotenv import load_dotenv
 import mysql.connector as database
 from typing import Any
 from google.cloud import storage
 from io import BytesIO
 from supabase import create_client, Client
 
-load_dotenv()
 
 def save_pickle(obj: Any, file_loc: str) -> None:
     """Saves any python object as a pickle file for fast and simple saving
@@ -42,10 +40,14 @@ def load_pickle(file_loc: str) -> Any:
 
 
 class Supabase_sql_client:
-    def __init__(self, url: str=os.environ.get("SUPABASE_URL"), key: str=os.environ.get("SUPABASE_KEY")):
-        """Instantiates an object to query the sql database. 
+    def __init__(
+        self,
+        url: str = os.environ["SUPABASE_URL"],
+        key: str = os.environ["SUPABASE_KEY"],
+    ):
+        """Instantiates an object to query the sql database.
 
-        This is implemented as a class such that the same options can be called for a similar 
+        This is implemented as a class such that the same options can be called for a similar
         class that connects to a different sql database provider
 
         Args:
@@ -54,7 +56,8 @@ class Supabase_sql_client:
         """
         self.supabase: Client = create_client(url, key)
 
-    def add_message(self,
+    def add_message(
+        self,
         sent_by: str,
         phone_number: str,
         media_type: str,
@@ -66,30 +69,42 @@ class Supabase_sql_client:
         transcription_level: str | None = None,
         attachment_uid: str | None = None,
     ) -> str:
+        user_id = self.get_user_uid_from_phone(phone_number)
         if uid is None:
             uid = str(uuid.uuid4())
-        data = {"sent_by": sent_by,
-                "phone_number": phone_number,
-                "media_type": media_type,
-                "message_id": uid,
-                "memo_duration_secs": memo_duration_secs,
-                "transcript": transcript,
-                "message_content": message_content,
-                "message_sid": message_sid,
-                "transcription_level": transcription_level,
-                "attachment_uid": attachment_uid
-                }
+        data = {
+            "sent_by": sent_by,
+            "user_id": user_id,
+            "media_type": media_type,
+            "message_id": uid,
+            "memo_duration_secs": memo_duration_secs,
+            "transcript": transcript,
+            "message_content": message_content,
+            "message_sid": message_sid,
+            "transcription_level": transcription_level,
+            "attachment_uid": attachment_uid,
+        }
         self.supabase.table("messages").insert(data).execute()
         return uid
 
     def get_last_x_memos(self, phone_number: str, n_memos: int) -> list:
-        assert phone_number[0] == "+", "Phone number should contain a leading +"
-        response = self.supabase.table('messages').select('*').eq('media_type', 'audio').eq("phone_number", phone_number).order("timestamp", desc=False).execute()
-        data = response.data[0]
+        assert phone_number[0] != "+", "Phone number should not contain a leading +"
+        user_id = self.get_user_uid_from_phone(phone_number)
+        response = (
+            self.supabase.table("messages")
+            .select("*")
+            .eq("media_type", "audio")
+            .eq("user_id", user_id)
+            .order("timestamp", desc=False)
+            .execute()
+        )
+        data = response.data
         return data[:n_memos]
 
     def get_message_by_uid(self, uid: str) -> dict:
-        response = self.supabase.table('messages').select("*").eq("message_id", uid).execute()
+        response = (
+            self.supabase.table("messages").select("*").eq("message_id", uid).execute()
+        )
         data = response.data
         assert len(data) > 0, f"No results found for uid {uid}"
         assert (
@@ -98,10 +113,19 @@ class Supabase_sql_client:
         return data[0]
 
     def update_message_by_uid(self, uid: str, update_dict: dict) -> None:
-        self.supabase.table('messages').update(update_dict).eq("message_id", uid).execute()
+        self.supabase.table("messages").update(update_dict).eq(
+            "message_id", uid
+        ).execute()
 
     def get_last_nth_user_message(self, phone_number: str, n=0) -> dict:
-        response = self.supabase.table('messages').select("*").eq("phone_number", phone_number)
+        user_id = self.get_user_uid_from_phone(phone_number)
+        response = (
+            self.supabase.table("messages")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("timestamp", desc=True)
+            .execute()
+        )
         data = response.data
         if n + 1 > len(data):
             raise ValueError(
@@ -110,35 +134,51 @@ class Supabase_sql_client:
         return data[n]
 
     def get_user_uid_from_phone(self, phone_number: str) -> str:
-        response = self.supabase.table('users').select("*").eq("phone_number", phone_number)
+        response = (
+            self.supabase.table("users").select("*").eq("phone_number", phone_number).execute()
+        )
         data = response.data
         assert len(data) <= 1, "More than one user found for that phone number"
         assert len(data) == 1, "No user found for that phone number"
         return data[0]["user_id"]
 
     def add_address_to_user_addressbook(
-        self, user_phone_number: str, address_details: dict
+        self, phone_number: str, address_details: dict
     ) -> None:
-        response = self.supabase.table("users").select("user_id").eq("phone_number", phone_number).execute()
-        address_details["user_id"] = response.data.dict()[0]["user_id"]
+        response = (
+            self.supabase.table("users")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .execute()
+        )
+        address_details["user_id"] = response.data[0]["user_id"]
         self.supabase.table("address_book").insert(address_details).execute()
-        
+
     def get_users_address_book(self, phone_number: str) -> list[dict]:
         user_id = self.get_user_uid_from_phone(phone_number)
-        response = self.supabase.table("address_book").select("*").eq("user_id", user_id).execute()
+        response = (
+            self.supabase.table("address_book")
+            .select("*")
+            .eq("user_id", user_id)
+            .execute()
+        )
         return response.data
 
-    def add_letter_content(self, phone_number: str, letter_content: str, letter_input: str) -> None:
-        pass
+    def add_letter(self, value_dict: dict) -> str:
+        letter_id = str(uuid.uuid4())
+        value_dict.update({"letter_id": letter_id})
+        self.supabase.table("letters").insert(value_dict).execute()
+        return letter_id
 
-    def update_letter_content(self, uuid: str, update_vals: dict) -> None:
-        pass
-    
-    def get_last_user_letter_content(self, phone_number: str) -> str | None:
-        pass 
+    def get_users_last_letter_content(self, phone_number: str) -> dict:
+        user_id = self.get_user_uid_from_phone(phone_number)
+        response = (
+            self.supabase.table("letters").select("*").eq("user_id", user_id).execute()
+        )
+        assert len(response.data) > 0, "User has no previous letter"
+        last_letter_content: dict = response.data[0]
+        return last_letter_content
 
-    def add_letter(self, value_dict: dict) -> None:
-        self.supabase.table("letter").insert(address_details).execute()
 
 class MySQL_client:
     def __init__(self):
@@ -151,7 +191,8 @@ class MySQL_client:
 
         self.cursor = self.connection.cursor(dictionary=True)
 
-    def add_message(self,
+    def add_message(
+        self,
         sent_by: str,
         phone_number: str,
         media_type: str,
@@ -163,7 +204,7 @@ class MySQL_client:
         transcription_level: str | None = None,
         attachment_uid: str | None = None,
     ) -> str:
-        uid:str = uid or str(uuid.uuid4())
+        uid: str = uid or str(uuid.uuid4())
         statement = "INSERT INTO messages (uid, sent_by, message_content, phone_number, media_type, memo_duration_secs, transcript, message_sid, transcription_level, attachment_uid) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
         data = (
             uid,
@@ -184,13 +225,11 @@ class MySQL_client:
 
     def get_last_x_memos(self, phone_number: str, n_memos: int) -> list:
         # uid_list = ', '.join(str(id) for id in longIdList)
-        statement = (
-            f"SELECT * FROM messages WHERE phone_number=%s AND media_type='audio' ORDER BY timestamp ASC LIMIT %s"
-        )
+        statement = f"SELECT * FROM messages WHERE phone_number=%s AND media_type='audio' ORDER BY timestamp ASC LIMIT %s"
         self.cursor.execute(statement, (phone_number, n_memos))
         results = self.cursor.fetchall()
         return results
-    
+
     def get_message_by_uid(self, uid: str) -> dict:
         """Returns the entry of a single entry in the messages table as a dict
 
@@ -286,7 +325,9 @@ class MySQL_client:
         user_uid = results[0]["uid"]
 
         # add address to address book
-        address_details.update({"associated_user_uid": user_uid, "uid": str(uuid.uuid4())})
+        address_details.update(
+            {"associated_user_uid": user_uid, "uid": str(uuid.uuid4())}
+        )
         statement = f"INSERT INTO address_book ({', '.join(address_details.keys())}) VALUES ({', '.join(['%s']*len(address_details.keys()))})"
         data = list(address_details.values())
         self.cursor.execute(statement, data)
@@ -304,7 +345,9 @@ class MySQL_client:
     ### Letter Content functions ####
     #################################
 
-    def add_letter_content(self, phone_number: str, letter_content: str, letter_input: str) -> None:
+    def add_letter_content(
+        self, phone_number: str, letter_content: str, letter_input: str
+    ) -> str:
         user_uid = self.get_user_uid_from_phone(phone_number)
         num_characters = len(letter_content)
         statement = "INSERT INTO letter_contents (uid, user_uid, num_characters, letter_content, letter_input) VALUES (%s, %s, %s, %s, %s)"
@@ -320,7 +363,7 @@ class MySQL_client:
         self.cursor.execute(statement, data)
         self.connection.commit()
 
-    def get_last_user_letter_content(self, phone_number: str) -> str | None:
+    def get_users_last_letter_content(self, phone_number: str) -> str | None:
         user_uid = self.get_user_uid_from_phone(phone_number)
 
         statement = "SELECT * FROM letter_contents WHERE user_uid=%s ORDER BY timestamp DESC LIMIT 1"
@@ -332,19 +375,15 @@ class MySQL_client:
         else:
             return results[0]
 
-
     #################################
     ### Letter Content functions ####
     #################################
-
 
     def add_letter(self, value_dict: dict) -> None:
         statement = f"INSERT INTO letters ({', '.join(value_dict.keys())}) VALUES ({', '.join(['%s']*len(value_dict.keys()))})"
         data = list(value_dict.values())
         self.cursor.execute(statement, data)
         self.connection.commit()
-
-
 
 
 class BlobStorage:
@@ -355,9 +394,7 @@ class BlobStorage:
         gcp_bucket_name: str | None = os.environ.get("GCP_BUCKET_NAME", None),
     ):
         self.destination = "GCP" if root_folder_path == "gcp" else "local"
-        self.root_folder = (
-            root_folder_path if self.destination == "local" else ""
-        )
+        self.root_folder = root_folder_path if self.destination == "local" else ""
         self.letter_folder = os.path.join(self.root_folder, "letters")
         self.memo_folder = os.path.join(self.root_folder, "memos")
         if self.destination == "GCP":
@@ -464,11 +501,11 @@ class BlobStorage:
         path += ".pdf" if path[-4:] != ".pdf" else ""
         self._write_bytes(letter_bytes, path)
 
-    def save_letter_draft(self, text:str, letter_id):
+    def save_letter_draft(self, text: str, letter_id):
         path = os.path.join(self.letter_folder, letter_id)
         path += ".rtf" if path[-4:] != ".rtf" else ""
         text = self._plain_text_to_rtf(text)
-        self._write_bytes(text.encode(), path)  
+        self._write_bytes(text.encode(), path)
 
     def save_voice_memo(self, voice_memo_bytes: bytes, unique_id: str) -> None:
         path_subfolder = self._get_or_create_subfolder(self.memo_folder, unique_id)
@@ -484,55 +521,54 @@ class BlobStorage:
         path = os.path.join(self.letter_folder, letter_uid)
         path += ".pdf" if path[-4:] != ".pdf" else ""
         return self._read_bytes(path)
-    
-    def get_audio_as_bytes(self, uid:str) -> bytes:
+
+    def get_audio_as_bytes(self, uid: str) -> bytes:
         path = os.path.join(self.memo_folder, uid, "audio.ogg")
         return self._read_bytes(path)
-    
-    def _make_file_public(self, path:str) -> str:
+
+    def _make_file_public(self, path: str) -> str:
         blob = self.bucket.get_blob(path)
         blob.make_public()
         public_url = blob.public_url
         return public_url
-    
-    def _make_file_private(self, path:str) -> None:
+
+    def _make_file_private(self, path: str) -> None:
         blob = self.bucket.get_blob(path)
         blob.make_private()
 
     def _plain_text_to_rtf(self, plain_text):
-        rtf_text = '{\\rtf1\\ansi\n'
-        rtf_text += plain_text.replace('\n', '\\par\n')
-        rtf_text += '\n}'
+        rtf_text = "{\\rtf1\\ansi\n"
+        rtf_text += plain_text.replace("\n", "\\par\n")
+        rtf_text += "\n}"
         return rtf_text
 
-    def _rtf_to_plain_text(self, rtf_text:str) -> str:
+    def _rtf_to_plain_text(self, rtf_text: str) -> str:
         # Remove RTF control words and symbols
-        plain_text = rtf_text.replace('\\par', '\n')
-        plain_text = re.sub(r'\\[a-z0-9]*\d*', '', plain_text)
-        plain_text = re.sub(r'\\[{}]', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s', '', plain_text)
-        plain_text = re.sub(r'\\~', ' ', plain_text)
-        plain_text = re.sub(r'\\=', '', plain_text)
-        plain_text = re.sub(r'\\-', '', plain_text)
-        plain_text = re.sub(r'\\_', '_', plain_text)
-        plain_text = re.sub(r'\\\'[a-z0-9]{2}', '', plain_text)
-        plain_text = re.sub(r'\\\"[a-z0-9]{2}', '', plain_text)
-        plain_text = re.sub(r'\\\'[A-Z]{2}', '', plain_text)
-        plain_text = re.sub(r'\\\"[A-Z]{2}', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\*', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s?\d{0,3}\s?', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s?\([A-Za-z]+\)\s?', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s?\([0-9]+\)\s?', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s?\(\d{0,3}\)\s?', '', plain_text)
-        plain_text = re.sub(r'\\[A-Za-z]+\s?\{[^\}]*\}\s?', '', plain_text)
+        plain_text = rtf_text.replace("\\par", "\n")
+        plain_text = re.sub(r"\\[a-z0-9]*\d*", "", plain_text)
+        plain_text = re.sub(r"\\[{}]", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s", "", plain_text)
+        plain_text = re.sub(r"\\~", " ", plain_text)
+        plain_text = re.sub(r"\\=", "", plain_text)
+        plain_text = re.sub(r"\\-", "", plain_text)
+        plain_text = re.sub(r"\\_", "_", plain_text)
+        plain_text = re.sub(r"\\\'[a-z0-9]{2}", "", plain_text)
+        plain_text = re.sub(r"\\\"[a-z0-9]{2}", "", plain_text)
+        plain_text = re.sub(r"\\\'[A-Z]{2}", "", plain_text)
+        plain_text = re.sub(r"\\\"[A-Z]{2}", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\*", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s?\d{0,3}\s?", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s?\([A-Za-z]+\)\s?", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s?\([0-9]+\)\s?", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s?\(\d{0,3}\)\s?", "", plain_text)
+        plain_text = re.sub(r"\\[A-Za-z]+\s?\{[^\}]*\}\s?", "", plain_text)
 
         # Remove extra whitespace
-        plain_text = re.sub(r'[ \t]+\n', '\n', plain_text)
-        plain_text = re.sub(r'\n\n+', '\n\n', plain_text)
+        plain_text = re.sub(r"[ \t]+\n", "\n", plain_text)
+        plain_text = re.sub(r"\n\n+", "\n\n", plain_text)
         plain_text = plain_text.strip()
 
         return plain_text
-
 
     def set_letter_pdf_public(self, letter_uid: str) -> str:
         """Creates a public URL for a letter. This may be required to send the letter to the recipient.
@@ -582,6 +618,7 @@ class BlobStorage:
 
 
 if __name__ == "__main__":
+    print("Executing dbu file")
     # some simple commands for development
     # uid = str(uuid.uuid4())
     # add_message(
@@ -603,17 +640,15 @@ if __name__ == "__main__":
     # update_message_by_uid(uid, {"transcription_level": "small"})
     # print(get_message_by_uid(uid)["transcription_level"])
 
-
     # Test some functions
-    update_message_by_uid(uid = "0010061e-d07c-4045-afab-9502910475d4", 
-                          update_dict={
-            "transcription_level": "small",
-            "transcript": "hibye",
-            "memo_duration_secs": 32,
-        })
+    # update_message_by_uid(uid = "0010061e-d07c-4045-afab-9502910475d4",
+    #                       update_dict={
+    #         "transcription_level": "small",
+    #         "transcript": "hibye",
+    #         "memo_duration_secs": 32,
+    #     })
 
-    add_letter_content("41768017796", "hiybe")
-
+    # add_letter_content("41768017796", "hiybe")
 
     # # load pdf as bytes
     # pdf_path_upload = "/Users/dominiquepaul/xProjects/02_Code23/OmiDiary/data/letters/00106968-6967-42a2-95c4-bfbf99845f59.pdf"

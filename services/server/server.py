@@ -37,7 +37,7 @@ COMMANDS = {
         "description": "Summarises the last x memos you sent. Needs to be followed by a number representing the number of memos you want to summarise",
         "example_input": "4",
     },  # requires integer -> response is same as above
-    "/send-last-summary-to": {
+    "/send": {
         "description": "Sends the last letter content/summary to the addressee selected. Followed by the addressee's name. Input will be matched to the closest name in your address book.",
         "example_input": "philipp hoesch",
     },  # requires addressee id  -> Returns a message with the summary and the address
@@ -108,7 +108,9 @@ def create_response(message: str, phone_number: str | None = None) -> str:
     Returns:
         str: A string formatted as a XML message that Twilio requires to respond to a message
     """
-    assert len(message) <= 1600, f"Message is too long. Max length is 1600 characters. Your message has {len(message)} characters."
+    assert (
+        len(message) <= 1600
+    ), f"Message is too long. Max length is 1600 characters. Your message has {len(message)} characters."
     if isinstance(phone_number, str):
         sql_client.add_message(
             sent_by="system",
@@ -181,7 +183,8 @@ def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> str:
     response += "Your summary is being prepared. We will send it you for editing once its ready \U0001F916"
     return create_response(response, values["WaId"])
 
-def parse_out_command(msg:str, return_as_lines:bool) -> str|list:
+
+def parse_out_command(msg: str, return_as_lines: bool) -> str | list:
     """Parses a message into all relevant lines but excludes the command and resulting empty lines
 
     This is very useful for extracting the content of a message after the command and especially useful if the message is a list of items. This is the case for the address or for edits made to a letter draft.
@@ -207,7 +210,6 @@ def parse_out_command(msg:str, return_as_lines:bool) -> str|list:
         return "\n".join(msg_lines)
 
 
-
 def parse_address_message(msg: str) -> str | dict:
     """Takes a message and parses it into a dictionary of address details
 
@@ -217,6 +219,7 @@ def parse_address_message(msg: str) -> str | dict:
     Returns:
         str|dict: If the message could not be parsed a string with an error message is returned. Otherwise a dictionary with the address details is returned.
     """
+    print(msg)
     msg_lines = parse_out_command(msg, return_as_lines=True)
     # check that we have at least 5 lines
     if len(msg_lines) < 5:
@@ -253,7 +256,7 @@ def fetch_closest_addressee_match(fuzzy_string: str, phone_number: str) -> str |
     Returns:
         str|dict: In case of an error a string with an error message is returned that can be passed on to the user. Otherwise a dictionary with the address details of the closest match is returned.
     """
-    addressees = sql_client.fetch_users_address_book(phone_number)
+    addressees = sql_client.get_users_address_book(phone_number)
     if len(addressees) == 0:
         return "You have not added any addressees yet. You can use the '/new-addressee' command to add a new addressee."
     # get the closest match
@@ -297,12 +300,14 @@ def process_message():
                 # TODO: add a check if a number was passed else reply with a hint to improve and tell the user what went wrong
                 n_memos = int(msg.split(" ")[1])
                 return summarise_last_n_memos(request.values, n_memos)
-            
+
             elif first_word == "/edit":
                 # extract text from message
                 message = parse_out_command(msg, return_as_lines=False)
-                intelligence.edit_letter_draft(edit_text=message, phone_number=request.values["WaId"])
-            
+                intelligence.edit_letter_draft(
+                    edit_text=message, phone_number=request.values["WaId"]
+                )
+
             elif first_word == "/send":
                 # Identify recipient
                 addressee = msg.split(" ")
@@ -374,7 +379,7 @@ def process_message():
                         file_as_bytes=letter_as_bytes
                     )
                     return create_response("Letter has been sent.")
-            elif first_word == "/show-address-booewk":
+            elif first_word == "/show-address-book":
                 return send_all_addressees(request.values["WaId"])
             elif first_word == "/new-addressee":
                 parsed_address_or_error = parse_address_message(msg)
@@ -392,7 +397,7 @@ def process_message():
             elif first_word == "/confirm-address":
                 # check whether last message was an attempt to add an address
                 last_message = sql_client.get_last_nth_user_message(
-                    phone_number=request.values["WaId"], n=1
+                    phone_number=request.values["WaId"], n=2
                 )
                 last_message = last_message["message_content"]
                 if last_message.split(" ")[0] != "/new-addressee":
@@ -422,7 +427,7 @@ def process_message():
                         )
                     msg += "\n"
                 # return create_response("test", request.values["WaId"])
-                print(time.time()-start)
+                print(time.time() - start)
                 return create_response(msg, request.values["WaId"])
             else:
                 msg = f"Sorry, I don't understand '{msg}'. You can view all commands using '/help'."
@@ -431,7 +436,7 @@ def process_message():
             return create_response(
                 f"Hi, I am your GrannyBot. Record a voice memo as if you were speaking to your grandma. It will be transcribed so you can see whether the transcription worked. Once you would like to create a letter you can tell me to summarise the last x memos and draft a letter using '/summarise-last-memo' or '/summarise-last-x-memos _number_'. You can also view all commands using '/help'.",
                 request.values["WaId"],
-                    )
+            )
 
 
 @app.route("/send_transcript/<uid>")

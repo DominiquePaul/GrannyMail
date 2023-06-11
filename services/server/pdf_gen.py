@@ -10,7 +10,7 @@ styles = getSampleStyleSheet()
 line_spacing = 4 * mm
 
 
-def create_letter_pdf_as_bytes(input_text: str, address: dict|None = None) -> bytes:
+def create_letter_pdf_as_bytes(input_text: str, address: dict | None = None) -> bytes:
     def myFirstPage(canvas, doc):
         canvas.saveState()
         canvas.setFont("Times-Roman", 10)
