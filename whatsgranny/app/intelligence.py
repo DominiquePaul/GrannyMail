@@ -7,8 +7,8 @@ import openai
 from dotenv import load_dotenv
 from twilio.rest import Client
 
-import pdf_gen
-import database_utils as dbu
+import whatsgranny.app.pdf_gen as pdf_gen
+import whatsgranny.app.database_utils as dbu
 
 load_dotenv()
 blob_manager = dbu.BlobStorage()
@@ -16,9 +16,9 @@ sql_client = dbu.Supabase_sql_client()
 
 
 # the whisper model that will transcribe the voice memo. Options are [tiny, base, small, medium,
-MODEL_SIZE = os.environ["MODEL_SIZE"]
-MODEL = whisper.load_model(MODEL_SIZE, download_root="whisper_models")
-openai.api_key = os.environ["OPENAI_KEY"]
+# MODEL_SIZE = os.environ["MODEL_SIZE"]
+# MODEL = whisper.load_model(MODEL_SIZE, download_root="whisper_models")
+# openai.api_key = os.environ["OPENAI_KEY"]
 
 SYSTEM_INSTRUCTIONS = "Du bist ein hilfreicher und freundlicher assistent, der nutzern dabei hilft unstruktierte notizen zu einem Brief für ihre Oma zusammenzufassen"
 PROMPT = "Ich schreibe einen Brief an meine Oma. Der Name meiner Oma ist Doris. Ich nenne sie häufiger Omi. Schreibe bitte einen Brief an sie aus meiner perspektive, der folgende inhalte zusammenfasst: \n\n"
@@ -274,4 +274,6 @@ def process_voice_memo(uid: str, media_url: str) -> None:
 
 if __name__ == "__main__":
     # openai.Model.list()
+
+    process_voice_memo()
     summarise_text("This is a test", "41768017796")

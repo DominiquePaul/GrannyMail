@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "grannymail-server"
+name = "whatsgranny"
 version = "0.1.0"
 description = ""
 authors = ["dominique-paul-uzh <dominique.c.a.paul@gmail.com>"]
 readme = "README.md"
-packages = [{include = "grannymail_server"}]
+packages = [{include = "whatsgranny"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"

@@ -5,50 +5,21 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "DC: server",
-            "type": "python",
-            "request": "attach",
-            "port": 5678,
-            "host": "localhost",
-            // "preLaunchTask": "setup-dev-containers",
-            "pathMappings": [
-                {
-                    "localRoot": "${workspaceFolder}/src/server/",
-                    "remoteRoot": "/app"
-                }
-            ]
-        },
-        {
-            "name": "DC: worker",
-            "type": "python",
-            "request": "attach",
-            "port": 5679,
-            "host": "localhost",
-            "preLaunchTask": "docker-run: debug",
-            "pathMappings": [
-                {
-                    "localRoot": "${workspaceFolder}/src/server/",
-                    "remoteRoot": "/app"
-                },
-            ],
-        },
-
-        {
-            "name": "flask-server",
+            "name": "Python: Flask",
             "type": "python",
             "request": "launch",
             "module": "flask",
             "env": {
-                "FLASK_APP": "src/server/server.py",
-                "FLASK_DEBUG": "1"
+                "FLASK_APP": "app.py",
+                "FLASK_ENV": "development",
+                "FLASK_DEBUG": "1"  // make sure it is not "0"
             },
             "args": [
                 "run",
-                "--no-debugger",
-                "--no-reload"
+                // "--no-debugger", Comment out this line
+                // "--no-reload"  Comment out this line
             ],
-            "jinja": true,
-            "justMyCode": true
+            "jinja": true
         },
 
 

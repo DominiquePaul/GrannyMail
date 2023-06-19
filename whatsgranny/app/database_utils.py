@@ -136,7 +136,10 @@ class Supabase_sql_client:
 
     def get_user_uid_from_phone(self, phone_number: str) -> str:
         response = (
-            self.supabase.table("users").select("*").eq("phone_number", phone_number).execute()
+            self.supabase.table("users")
+            .select("*")
+            .eq("phone_number", phone_number)
+            .execute()
         )
         data = response.data
         assert len(data) <= 1, "More than one user found for that phone number"

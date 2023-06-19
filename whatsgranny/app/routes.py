@@ -2,23 +2,24 @@ import os
 import re
 import time
 
-from werkzeug.datastructures import CombinedMultiDict
-from dotenv import load_dotenv
-from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse
 import redis
 from rq import Queue
 from rapidfuzz import fuzz
 import numpy as np
+from werkzeug.datastructures import CombinedMultiDict
+from dotenv import load_dotenv
+from flask import request, Blueprint
+from twilio.twiml.messaging_response import MessagingResponse
 
-import intelligence
-import database_utils as dbu
-from pingen import Pingen
-from pdf_gen import create_letter_pdf_as_bytes
 
-r = redis.from_url(os.environ["REDIS_URL"])
-assert r.ping(), "No connection to Redis"
-REDIS_QUEUE = Queue(connection=r, default_timeout=3600)
+import whatsgranny.app.intelligence as intelligence
+import whatsgranny.app.database_utils as dbu
+from whatsgranny.app.pingen import Pingen
+from whatsgranny.app.pdf_gen import create_letter_pdf_as_bytes
+
+# r = redis.from_url(os.environ["REDIS_URL"])
+# assert r.ping(), "No connection to Redis"
+# REDIS_QUEUE = Queue(connection=r, default_timeout=3600)
 
 load_dotenv()
 
@@ -26,7 +27,7 @@ blob_manager = dbu.BlobStorage()
 sql_client = dbu.Supabase_sql_client()
 pingen_manager = Pingen()
 
-app = Flask(__name__)
+main = Blueprint("main", __name__)
 
 COMMANDS = {
     "/summarise-last-memo": {
@@ -271,7 +272,12 @@ def send_letter(address_uid, letter_content_uid) -> None:
     pass
 
 
-@app.route("/message", methods=["POST"])
+@main.route("/", methods=["GET"])
+def home():
+    return "Hello, World!"
+
+
+@main.route("/message", methods=["POST"])
 def process_message():
     start = time.time()
     msg_type = get_message_type(request.values)
@@ -439,7 +445,7 @@ def process_message():
             )
 
 
-@app.route("/send_transcript/<uid>")
+@main.route("/send_transcript/<uid>")
 def send_transcript(uid: str):
     """Send a message with the transcript to the user once transcription has completed.
 
@@ -461,4 +467,4 @@ def send_transcript(uid: str):
 
 if __name__ == "__main__":
     print("ready to go...")
-    app.run()
+    main.run()
