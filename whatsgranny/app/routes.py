@@ -1,9 +1,7 @@
-import os
 import re
 import time
+import typing as t
 
-import redis
-from rq import Queue
 from rapidfuzz import fuzz
 import numpy as np
 from werkzeug.datastructures import CombinedMultiDict
@@ -17,13 +15,10 @@ import whatsgranny.app.database_utils as dbu
 from whatsgranny.app.pingen import Pingen
 from whatsgranny.app.pdf_gen import create_letter_pdf_as_bytes
 
-# r = redis.from_url(os.environ["REDIS_URL"])
-# assert r.ping(), "No connection to Redis"
-# REDIS_QUEUE = Queue(connection=r, default_timeout=3600)
-
 load_dotenv()
 
 blob_manager = dbu.BlobStorage()
+
 sql_client = dbu.Supabase_sql_client()
 pingen_manager = Pingen()
 
@@ -92,7 +87,8 @@ def send_all_addressees(phone_number: str) -> str:
         message = "These are your addressees:\n\n"
         for idx, addressee in enumerate(addressees):
             addressee["address_line2"] = (
-                addressee["address_line2"] + "\n" if addressee["address_line2"] else ""
+                addressee["address_line2"] +
+                "\n" if addressee["address_line2"] else ""
             )
             message += add_template.format(idx=idx + 1, **addressee)
         # Send message to user
@@ -144,10 +140,12 @@ def get_message_type(values: CombinedMultiDict) -> str:
             return "audio"
     elif values.get("Body", None) is not None:
         return "text"
-    raise AssertionError("Unknown media type")
+    else:
+        raise ValueError("Unknown media type")
+    return "unknown"
 
 
-def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> str:
+def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> t.Tuple[dict, int]:
     """Fetches last n memos from database and triggers summarisation
 
     Args:
@@ -159,10 +157,9 @@ def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> str:
     response = ""
     if len(memos) == 0:
         # Inform user that they need to send memos first
-        return create_response(
-            "You have not sent any voice memos yet. Please send a voice memo to get started.",
-            values["WaId"],
-        )
+        intelligence.send_message(
+            msg="You have not sent any voice memos yet. Please send a voice memo to get started.",
+            phone_number=values["WaId"])
     elif len(memos) < n_memos:
         response += (
             f"You have so far only sent {len(memos)} so far. Summarising these instead."
@@ -176,13 +173,8 @@ def summarise_last_n_memos(values: CombinedMultiDict, n_memos: int) -> str:
     # concatenate memos to one message for summarisation by LLM
     summarisation_input = "\n\n".join([memo["transcript"] for memo in memos])
     # Trigger summarisation
-    job = REDIS_QUEUE.enqueue(
-        intelligence.summarise_text, args=[summarisation_input, values["WaId"]]
-    )
-    print(f"Started job {job.get_id()}")
-    # intelligence.summarise_text(summarisation_input, values["WaId"])
-    response += "Your summary is being prepared. We will send it you for editing once its ready \U0001F916"
-    return create_response(response, values["WaId"])
+    intelligence.summarise_text(summarisation_input, values["WaId"])
+    return {"message": "Success"}, 200
 
 
 def parse_out_command(msg: str, return_as_lines: bool) -> str | list:
@@ -277,6 +269,15 @@ def home():
     return "Hello, World!"
 
 
+@main.route("/add-user", methods=["POST"])
+def add_user():
+    d = request.values
+    status_code, error_message = sql_client.add_user(
+        d["first_name"], d["last_name"], d["email"], d["phone_number"])
+    assert status_code == 0, error_message
+    return create_response("User added successfully")
+
+
 @main.route("/message", methods=["POST"])
 def process_message():
     start = time.time()
@@ -291,17 +292,17 @@ def process_message():
         message_sid=request.values["MessageSid"],
     )
     if msg_type == "audio":
-        job = REDIS_QUEUE.enqueue(
-            intelligence.process_voice_memo, args=[uid, request.values["MediaUrl0"]]
-        )
-        print(f"Started job {job.id}")
-        return create_response(f"Processing message... \U0001F916")
+        # upload
+        r = intelligence.process_voice_memo(uid, request.values["MediaUrl0"])
+        assert r == 0, "Something went wrong while processing the voice memo"
+        return create_response(f"Message processed successfully \U0001F916")
     elif msg_type == "text":
         # check if the message starts with one of the official commands
         first_word = msg.split(" ")[0].lower()
         if first_word in COMMANDS.keys():
             if first_word == "/summarise-last-memo":
-                return summarise_last_n_memos(request.values, 1)
+                summarise_last_n_memos(request.values, 1)
+                return create_response("Summary sent successfully")
             elif first_word == "/summarise-last-x-memos":
                 # TODO: add a check if a number was passed else reply with a hint to improve and tell the user what went wrong
                 n_memos = int(msg.split(" ")[1])
@@ -313,13 +314,14 @@ def process_message():
                 intelligence.edit_letter_draft(
                     edit_text=message, phone_number=request.values["WaId"]
                 )
+                return create_response("Draft updated successfully")
 
             elif first_word == "/send":
                 # Identify recipient
                 addressee = msg.split(" ")
                 if len(addressee) <= 1:
                     return create_response(
-                        "Please specify the name of who you want to sedn the summary to."
+                        "Please specify the name of who you want to send the summary to."
                     )
                 addressee = " ".join(addressee[1:])
                 closest_addressee_or_error = fetch_closest_addressee_match(
@@ -330,13 +332,13 @@ def process_message():
                         "Error retreiving address: " + closest_addressee_or_error
                     )
                 else:
-                    ### Create
+                    # Create
                     # fetch latest content
-                    last_letter = sql_client.get_last_user_letter_content(
+                    last_letter = sql_client.get_users_last_letter_content(
                         request.values["WaId"]
                     )
-                    last_letter_uid = last_letter["uid"]
-                    last_letter_content = last_letter["content"]
+                    last_letter_uid = last_letter["letter_id"]
+                    last_letter_content = last_letter["letter_content"]
                     # create pdf
                     letter_bytes = create_letter_pdf_as_bytes(
                         input_text=last_letter_content,
@@ -344,18 +346,15 @@ def process_message():
                     )
                     # save pdf to blob
                     blob_manager.save_letter(letter_bytes, last_letter_uid)
-                    # update sql to reflect that a pdf does exist in blob storage
-                    sql_client.update_letter_content(
-                        last_letter_uid, update_vals={"pdf_created": True}
-                    )
 
-                    ### Send back the pdf file to user
+                    # Send back the pdf file to user
                     # briefly make the pdf file accessible so that twilio can send it to the user
-                    pdf_url = blob_manager.set_letter_pdf_public(last_letter_uid)
+                    pdf_url = blob_manager.set_letter_pdf_public(
+                        last_letter_uid)
 
                     # send the pdf file to the user
                     intelligence.send_attachment(
-                        pdf_url, request.values["WaID"], last_letter_uid
+                        pdf_url, request.values["WaId"], letter_uid=last_letter_uid
                     )
 
                     # make the file private again
@@ -380,9 +379,14 @@ def process_message():
                         request.values["WaId"]
                     )
                     last_letter_uid = last_letter["uid"]
-                    letter_as_bytes = blob_manager.get_letter_as_bytes(last_letter_uid)
+                    letter_as_bytes = blob_manager.get_letter_as_bytes(
+                        last_letter_uid)
                     pingen_letter_uid = pingen_manager.upload_and_send_letter(
                         file_as_bytes=letter_as_bytes
+                    )
+                    # update sql to reflect that a pdf does exist in blob storage
+                    sql_client.update_letter_content(
+                        last_letter_uid, update_vals={"sent": True}
                     )
                     return create_response("Letter has been sent.")
             elif first_word == "/show-address-book":

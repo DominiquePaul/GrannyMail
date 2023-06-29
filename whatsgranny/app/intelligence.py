@@ -2,13 +2,13 @@ import os
 import time
 
 import requests
-import whisper
 import openai
 from dotenv import load_dotenv
 from twilio.rest import Client
 
 import whatsgranny.app.pdf_gen as pdf_gen
 import whatsgranny.app.database_utils as dbu
+from whatsgranny.app.whisper_mod import transcribe
 
 load_dotenv()
 blob_manager = dbu.BlobStorage()
@@ -119,22 +119,15 @@ def transcribe_voice_memo(uid: str) -> str:
     # transcribe and save to disk. fp16 is not supported on the CPU version of the model. It is only supported on the GPU version.
     audio_bytes = blob_manager.get_audio_as_bytes(uid)
     # temporarily create a local file to feed into the whisper model
-    file_path = temp_save_memo_locally(audio_bytes)
-    whisper_res = MODEL.transcribe(file_path, verbose=True, fp16=False)
-    blob_manager.save_whisper_pkl(whisper_res, uid)
-
+    transcript_text, duration = transcribe(audio_bytes)
     # Create a full text output and save
-    transcript_text = ""
-    for sgmnt in whisper_res["segments"]:
-        transcript_text += sgmnt["text"]
-
     # update the database entry to reflect which type of transcription has been applied
     sql_client.update_message_by_uid(
         uid,
         {
-            "transcription_level": MODEL_SIZE,
+            "transcription_level": "API",
             "transcript": transcript_text,
-            "memo_duration_secs": whisper_res["segments"][-1]["end"],
+            "memo_duration_secs": duration,
         },
     )
 
@@ -146,9 +139,8 @@ def summarise_text(
     phone_number: str,
     system_instructions: str = SYSTEM_INSTRUCTIONS,
     prompt: str = PROMPT,
-    store_and_send_result=True,
 ) -> str:
-    """summarises a text using the openai davinci API
+    """summarises a text using the openai gpt4 API
 
     Args:
         input_text (str): the text that is supposed to be summarised
@@ -176,31 +168,30 @@ def summarise_text(
     summary = resp["choices"][0]["message"]["content"]
 
     # remove first word
-    if store_and_send_result:
-        # get user_id
-        user_id = sql_client.get_user_uid_from_phone(phone_number)
-        letter_data = {
-            "user_id": user_id,
-            "cost_eur": None,
-            "letter_input": input_text,
-            "letter_content": summary,
-            "prompt": prompt,
-        }
-        letter_uid = sql_client.add_letter(letter_data)
-        letter_bytes = pdf_gen.create_letter_pdf_as_bytes(summary)
-        blob_manager.save_letter(letter_bytes, letter_uid)
-        public_url = blob_manager.set_letter_pdf_public(letter_uid)
-        print(f"Public url for pdf: {public_url}")
-        send_attachment(
-            public_media_url=public_url,
-            phone_number=phone_number,
-            letter_uid=letter_uid,
-        )
-        send_message(
-            msg="Here is a draft. You can make changes in the style of: 'hello doriss' -> 'Dear Doris' or just share instructions on how to change the text. Separate each command by a linebreak for best results.",
-            phone_number=phone_number,
-        )
-        blob_manager.set_letter_pdf_private(letter_uid)
+    # get user_id
+    user_id = sql_client.get_user_uid_from_phone(phone_number)
+    letter_data = {
+        "user_id": user_id,
+        "cost_eur": None,
+        "letter_input": input_text,
+        "letter_content": summary,
+        "prompt": prompt,
+    }
+    letter_uid = sql_client.add_letter(letter_data)
+    letter_bytes = pdf_gen.create_letter_pdf_as_bytes(summary)
+    blob_manager.save_letter(letter_bytes, letter_uid)
+    public_url = blob_manager.set_letter_pdf_public(letter_uid)
+    print(f"Public url for pdf: {public_url}")
+    send_attachment(
+        public_media_url=public_url,
+        phone_number=phone_number,
+        letter_uid=letter_uid,
+    )
+    send_message(
+        msg="Here is a draft. You can make changes in the style of: 'hello doriss' -> 'Dear Doris' or just share instructions on how to change the text. Separate each command by a linebreak for best results.",
+        phone_number=phone_number,
+    )
+    blob_manager.set_letter_pdf_private(letter_uid)
 
     return summary
 
@@ -260,7 +251,7 @@ def edit_letter_draft(edit_text: str, phone_number: str) -> str:
     return updated_content
 
 
-def process_voice_memo(uid: str, media_url: str) -> None:
+def process_voice_memo(uid: str, media_url: str) -> int:
     """Saves the voice memo to blob storage and then transcribes it
 
     Args:
@@ -270,10 +261,4 @@ def process_voice_memo(uid: str, media_url: str) -> None:
     voice_memo_bytes = r.content
     blob_manager.save_voice_memo(voice_memo_bytes, uid)
     transcribe_voice_memo(uid)
-
-
-if __name__ == "__main__":
-    # openai.Model.list()
-
-    process_voice_memo()
-    summarise_text("This is a test", "41768017796")
+    return 0

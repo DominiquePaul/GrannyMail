@@ -1,6 +1,6 @@
-[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://github.com/tatsu-lab/stanford_alpaca/blob/main/LICENSE) 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-311/) 
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black) 
+[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://github.com/tatsu-lab/stanford_alpaca/blob/main/LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-311/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 # Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
 
@@ -19,9 +19,12 @@ WhatsGranny uses the [Twilio](https://www.google.com/search?q=twilio+api+whatsap
 - [ ] Write tests for the intelligence module
 - [ ] Move to whisper API instead of self-hosting
 - [ ] Ideally only run with one service (no task-queue)
-  
+- [ ] User can delete address
+- [ ] User can manually change message and send it back for mailing
+
 ### Crucial improvements
 - [ ] User can manually change message and send it back for mailing
+- [ ] User can delete address
 
 ### Future features
 
@@ -46,15 +49,17 @@ In your Twilio account, add the url provided by twilio, followed by a `/message`
 
 ![twilio sandbox settings](./readme-images/twilio-sandbox.png)
 
-Run the database using docker-compose. This command will pull the necessary images and start the containers in the background. Run without -d to start the container in the foreground. 
+Run the database using docker-compose. This command will pull the necessary images and start the containers in the background. Run without -d to start the container in the foreground.
 
-`docker-compose up -d`  
+`docker-compose up -d`
+
+
 
 ### GCP
 
 Memos and pdfs can be stored locally, but to send attachments to users via twilio the respective attachment needs to be made available at a publicly accessible url at least for a short time. Since this is not possible with local files you need at least some online solution. This repo uses GCP. You can of course implement another solution but for now GCP presumably is the easiest way to get the repo running as the code is alraedy implemented.
 
-Create service account credentials using the instructions [here](https://cloud.google.com/iam/docs/keys-create-delete#iam-service-account-keys-create-console) and place them in the server folder 
+Create service account credentials using the instructions [here](https://cloud.google.com/iam/docs/keys-create-delete#iam-service-account-keys-create-console) and place them in the server folder
 run these commands:
 ```
 gcloud config set project grannymail
@@ -65,12 +70,12 @@ gcloud projects add-iam-policy-binding grannymail \
     --role="roles/storage.admin"
 ```
 
-Set the `GOOGLE_APPLICATION_CREDENTIALS`environment variable to the location of your json file. 
+Set the `GOOGLE_APPLICATION_CREDENTIALS`environment variable to the location of your json file.
 
 You can see alterntive options for authentication, such as using your console to grant automatic access for apps running on your computer (not docker) [here](https://cloud.google.com/docs/authentication/provide-credentials-adc#how-to).
 
 
-## Quickstart 
+## Quickstart
 
 1. Send "join military-rapidly" to Twilio
 2. `ngrok http 5000` -> Copy the url into the twilio console, appending `/message`
@@ -86,7 +91,7 @@ Some links to resources that I frequently access during development
 - [python-mariadb-connector](https://www.digitalocean.com/community/tutorials/how-to-store-and-retrieve-data-in-mariadb-using-python-on-ubuntu-18-04)
 - [pigar](https://github.com/damnever/pigar) for creation of requirements.txt files `pigar gen -f docker/server/requirements.txt docker/server`
 
-# Some learnings 
+# Some learnings
 
 Check own code for security issues
 `bandit example.py`
@@ -95,3 +100,10 @@ Check own code for security issues
 Check packages for security issues
 `safety check`
 `safety check --full-report`
+
+
+# Contributing
+
+## pre-commit
+
+This repo uses pre-commit to run some checks before committing. You can install it with `pip install pre-commit`. Then run `pre-commit install` to install the hooks. You can run the checks manually with `pre-commit run --all-files`.

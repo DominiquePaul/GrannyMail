@@ -2,9 +2,11 @@ import re
 import uuid
 import pickle
 import os
+import typing as t
 from io import BytesIO
 from typing import Any
 
+from uuid import uuid4
 import mysql.connector as database
 from google.cloud import storage
 from supabase import create_client, Client
@@ -57,6 +59,34 @@ class Supabase_sql_client:
         """
         self.supabase: Client = create_client(url, key)
 
+    def add_user(self, first_name: str, last_name: str, email: str, phone_number: str) -> t.Tuple[int, str]:
+        """Adds a user to the database
+
+        Args:
+            first_name (str): first name of the user
+            last_name (str): last name of the user
+            phone_number (str): phone number of the user
+        """
+        data = {
+            "user_id": str(uuid.uuid4()),
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email,
+            "phone_number": phone_number,
+        }
+
+        response = (self.supabase.table("users").select(
+            "*").eq("phone_number", phone_number).execute())
+        if response.data != []:
+            if len(response) > 0:
+                return 1, "Phone number already exists"
+            response = (self.supabase.table("users").select(
+                "*").eq("email", email).execute()).data
+            if len(response) > 0:
+                return 2, "Email already exists"
+        self.supabase.table("users").insert(data).execute()
+        return 0, "User added successfully"
+
     def add_message(
         self,
         sent_by: str,
@@ -71,8 +101,7 @@ class Supabase_sql_client:
         attachment_uid: str | None = None,
     ) -> str:
         user_id = self.get_user_uid_from_phone(phone_number)
-        if uid is None:
-            uid = str(uuid.uuid4())
+        uid = uid or str(uuid.uuid4())
         data = {
             "sent_by": sent_by,
             "user_id": user_id,
@@ -104,7 +133,8 @@ class Supabase_sql_client:
 
     def get_message_by_uid(self, uid: str) -> dict:
         response = (
-            self.supabase.table("messages").select("*").eq("message_id", uid).execute()
+            self.supabase.table("messages").select(
+                "*").eq("message_id", uid).execute()
         )
         data = response.data
         assert len(data) > 0, f"No results found for uid {uid}"
@@ -135,13 +165,8 @@ class Supabase_sql_client:
         return data[n]
 
     def get_user_uid_from_phone(self, phone_number: str) -> str:
-        response = (
-            self.supabase.table("users")
-            .select("*")
-            .eq("phone_number", phone_number)
-            .execute()
-        )
-        data = response.data
+        data = self.supabase.table("users").select(
+            "*").eq("phone_number", phone_number).execute().data
         assert len(data) <= 1, "More than one user found for that phone number"
         assert len(data) == 1, "No user found for that phone number"
         return data[0]["user_id"]
@@ -177,11 +202,44 @@ class Supabase_sql_client:
     def get_users_last_letter_content(self, phone_number: str) -> dict:
         user_id = self.get_user_uid_from_phone(phone_number)
         response = (
-            self.supabase.table("letters").select("*").eq("user_id", user_id).execute()
-        )
-        assert len(response.data) > 0, "User has no previous letter"
-        last_letter_content: dict = response.data[0]
+            self.supabase.table("letters").select(
+                "*").eq("user_id", user_id).execute()
+        ).data
+        assert len(response) > 0, "User has no previous letter"
+        last_letter_content: dict = response[-1]
         return last_letter_content
+
+    def update_letter_content(self, letter_id: str, update_vals: dict) -> None:
+        self.supabase.table("letters").update(update_vals).eq(
+            "letter_id", letter_id
+        ).execute()
+
+    def delete_table_contents(self, table_name):
+        uid = str(uuid4())
+        id_col_name = list(self.supabase.table(
+            table_name).select("*").execute().data[0].keys())[0]
+        res = input(
+            f"Are you sure you want to delete the table {table_name}? Type DELETE to confirm: ")
+        if res == "DELETE":
+            self.supabase.table(table_name).delete().neq(
+                id_col_name, uid).execute()
+            print("Table deleted")
+        else:
+            print("Aborting delete operation")
+
+    def delete_all_tables(self):
+        uid = str(uuid4())
+        res = input(
+            f"Are you sure you want to delete ALL TABLES? Type 'YES, DELETE ALL' to confirm: ")
+        if res == "YES, DELETE ALL":
+            for table_name in ["letters", "address_book", "messages", "users"]:
+                id_col_name = list(self.supabase.table(
+                    table_name).select("*").execute().data[0].keys())[0]
+                self.supabase.table(table_name).delete().neq(
+                    id_col_name, uid).execute()
+                print(f"{table_name} deleted")
+        else:
+            print("Aborting delete operation")
 
 
 class MySQL_client:
@@ -208,7 +266,7 @@ class MySQL_client:
         transcription_level: str | None = None,
         attachment_uid: str | None = None,
     ) -> str:
-        uid: str = uid or str(uuid.uuid4())
+        uid = uid or str(uuid.uuid4())
         statement = "INSERT INTO messages (uid, sent_by, message_content, phone_number, media_type, memo_duration_secs, transcript, message_sid, transcription_level, attachment_uid) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
         data = (
             uid,
@@ -263,12 +321,14 @@ class MySQL_client:
         message_info_dict = self.get_message_by_uid(uid)
         # check that the keys of the update dict are a strict subset of the keys of the columns in the database
         if not set(update_dict.keys()) <= set(message_info_dict.keys()):
-            erroneous_keys = set(update_dict.keys()) - set(message_info_dict.keys())
+            erroneous_keys = set(update_dict.keys()) - \
+                set(message_info_dict.keys())
             erroneous_keys_str = ", ".join(erroneous_keys)
             raise ValueError(
                 f"Some of the keys in the dictionary passed are not valid database columns: {erroneous_keys_str}"
             )
-        assignments = ", ".join(f"`{k.replace('`', '``')}`=%s" for k in update_dict)
+        assignments = ", ".join(
+            f"`{k.replace('`', '``')}`=%s" for k in update_dict)
         statement = f"UPDATE messages SET {assignments}  WHERE uid = %s"
         # we merge the update valu e together with the uid as the values that need to be inserted into the sql statement
         data = list(update_dict.values()) + [uid]
@@ -356,7 +416,8 @@ class MySQL_client:
         num_characters = len(letter_content)
         statement = "INSERT INTO letter_contents (uid, user_uid, num_characters, letter_content, letter_input) VALUES (%s, %s, %s, %s, %s)"
         letter_uid = str(uuid.uuid4())
-        data = (letter_uid, user_uid, num_characters, letter_content, letter_input)
+        data = (letter_uid, user_uid, num_characters,
+                letter_content, letter_input)
         self.cursor.execute(statement, data)
         self.connection.commit()
         return letter_uid
@@ -512,12 +573,14 @@ class BlobStorage:
         self._write_bytes(text.encode(), path)
 
     def save_voice_memo(self, voice_memo_bytes: bytes, unique_id: str) -> None:
-        path_subfolder = self._get_or_create_subfolder(self.memo_folder, unique_id)
+        path_subfolder = self._get_or_create_subfolder(
+            self.memo_folder, unique_id)
         path_audio = os.path.join(path_subfolder, "audio.ogg")
         self._write_bytes(voice_memo_bytes, path_audio)
 
     def save_whisper_pkl(self, whisper_object, unique_id: str) -> None:
-        path_subfolder = self._get_or_create_subfolder(self.memo_folder, unique_id)
+        path_subfolder = self._get_or_create_subfolder(
+            self.memo_folder, unique_id)
         path_whisper_pkl = os.path.join(path_subfolder, "whisper_object.pkl")
         self._write_pkl(whisper_object, path_whisper_pkl)
 

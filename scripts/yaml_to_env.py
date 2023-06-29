@@ -12,6 +12,8 @@ def yaml_to_env(yaml_file, env_file):
 
 
 # Replace 'input.yaml' with the path to your YAML file
-yaml_to_env("dev.yaml", "dev.env")
-yaml_to_env("stage.yaml", "stage.env")
-yaml_to_env("prod.yaml", "prod.env")
+# yaml_to_env("dev.yaml", "dev.env")
+# yaml_to_env("stage.yaml", "stage.env")
+# yaml_to_env("prod.yaml", "prod.env")
+
+yaml_to_env("dev.yaml", "whatsgranny/.env")
