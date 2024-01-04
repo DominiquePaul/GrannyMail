@@ -11,6 +11,7 @@ gcloud_private_key.json
 sandbox.py
 services/.mypy_cache
 services/database
+.vscode
 
 ### Remainder is the default python .gitignore file by github
 

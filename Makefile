@@ -1,3 +1,7 @@
+setup_repo:
+	virtualenv venv
+	source venv/bin/activate
+	pip install -r requirements.txt
 encrypt:
 	# Encrypting files
 	gcloud kms encrypt --plaintext-file=.env --ciphertext-file=.env.enc --location=europe-west1 --keyring=goldenbook_key --key=goldenbook_key

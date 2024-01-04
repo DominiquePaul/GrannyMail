@@ -5,24 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Flask",
-            "type": "python",
-            "request": "launch",
-            "module": "flask",
-            "env": {
-                "FLASK_APP": "app.py",
-                "FLASK_DEBUG": "1"  // make sure it is not "0"
-            },
-            "args": [
-                "run",
-                // "--no-debugger", Comment out this line
-                // "--no-reload"  Comment out this line
-            ],
-            "jinja": true
-        },
-
-
-        {
             "name": "Current File",
             "type": "python",
             "request": "launch",
