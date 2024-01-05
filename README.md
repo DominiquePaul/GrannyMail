@@ -101,6 +101,17 @@ Check packages for security issues
 `safety check`
 `safety check --full-report`
 
+# Telegram configuration
+
+1. Setup your own Telegram bot using [BotFather](https://telegram.me/BotFather)
+2. Set your Webhook URL by calling this URL: https://api.telegram.org/bot{my_bot_token}/setWebhook?url={url_to_send_updates_to}
+
+
+
+# Development setup
+
+1. Download Ngrok and run your development server with `ngrok http https://localhost:80 --domain=adapted-earwig-duly.ngrok-free.app` 
+
 
 # Contributing
 

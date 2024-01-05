@@ -1,4 +1,4 @@
-from whatsgranny.utils import get_message
+from grannymail.utils import get_message
 
 
 def test_get_message():
