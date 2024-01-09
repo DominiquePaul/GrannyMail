@@ -12,6 +12,7 @@ sandbox.py
 services/.mypy_cache
 services/database
 .vscode
+.vscode/**
 
 ### Remainder is the default python .gitignore file by github
 
@@ -140,6 +141,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+
 env/
 venv/
 ENV/

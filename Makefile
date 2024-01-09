@@ -3,11 +3,8 @@ setup_repo:
 	source venv/bin/activate
 	pip install -r requirements.txt
 ngrok:
-	ngrok http https://localhost:8081 --domain=adapted-earwig-duly.ngrok-free.app --host=
+	ngrok http http://localhost:8000 --domain=adapted-earwig-duly.ngrok-free.app
 devbot:
-	cd grannymail && gunicorn telegrambot:app -k uvicorn.workers.UvicornWorker --reload
-
-
-
-
-	
+	gunicorn grannymail.telegrambot:app -k uvicorn.workers.UvicornWorker --reload --timeout=0
+bot:
+	gunicorn telegrambot:app -k uvicorn.workers.UvicornWorker -b :8000 --workers 1 --threads 8 --timeout 0

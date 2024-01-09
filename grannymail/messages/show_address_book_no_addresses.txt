@@ -1,0 +1,11 @@
+This is where we'd show your addresses... if you had any 😭
+
+Let's add your first address! 📇 You can add an address to send your letters to like this:
+
+'/add_address
+[Firstname lastname]
+[Address line 1]
+[Address line 2 - optional]
+[Zip code]
+[City]
+[Country]'

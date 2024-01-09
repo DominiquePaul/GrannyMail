@@ -107,10 +107,13 @@ Check packages for security issues
 2. Set your Webhook URL by calling this URL: https://api.telegram.org/bot{my_bot_token}/setWebhook?url={url_to_send_updates_to}
 
 
-
 # Development setup
 
-1. Download Ngrok and run your development server with `ngrok http https://localhost:80 --domain=adapted-earwig-duly.ngrok-free.app` 
+1. Download Ngrok and run your development server with `ngrok http https://localhost:80 --domain=adapted-earwig-duly.ngrok-free.app`
+
+
+### Advice from myself after completing this project to myself before starting this project
+- Use render.com to run the bot as a docker container vs. Cloud Run. The continuous deployment with google cloud run is a huge pain and super easy with render.com
 
 
 # Contributing

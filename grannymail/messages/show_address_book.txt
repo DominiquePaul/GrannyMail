@@ -1,0 +1,6 @@
+This is your address book:
+{}
+You can delete messages by keyword or by number:
+
+"/delete_address 1"
+"/delete_address {}"
