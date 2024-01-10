@@ -1,4 +1,5 @@
 FROM python:3.11-slim
+
 ENV PYTHONUNBUFFERED True
 WORKDIR /
 COPY requirements.txt .

@@ -1,7 +1,13 @@
+from pathlib import Path
+import os
+import io
 import numpy as np
 from rapidfuzz import fuzz
 from grannymail.db_client import Address
 from grannymail.utils import get_message
+
+from openai import OpenAI
+openai_client = OpenAI()
 
 
 def is_message_empty(msg: str) -> bool:
@@ -104,3 +110,32 @@ def fetch_closest_address_index(fuzzy_string: str, address_book: list[Address]) 
     matching_scores = [fuzz.partial_ratio(fuzzy_string, ad)
                        for ad in serialised_addresses]
     return int(np.argmax(matching_scores))
+
+
+def transcribe_voice_memo(voice_bytes: bytes) -> str:
+    """Transcribes a voice memo
+
+    Returns:
+        str: The transcribed text
+    """
+    # Use an in-memory bytes buffer to avoid writing to disk
+    buffer = io.BytesIO(voice_bytes)
+    buffer.name = "temp_file.ogg"
+    transcript = openai_client.audio.transcriptions.create(
+        model="whisper-1",
+        file=buffer
+    )
+    return transcript.text
+
+
+def transcript_to_letter_text(transcript: str, prompt: str = None) -> str:
+    """Converts a transcript to a letter text
+
+    Args:
+        transcript (str): The transcript
+
+    Returns:
+        str: The letter text
+    """
+    if not prompt:
+        prompt = read_txt_file("letter_prompt")

@@ -21,6 +21,11 @@ class AbstractDataTableClass:
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None and k != "_unique_fields"}
 
+    def is_empty(self) -> bool:
+        """Returns True if all fields of the dataclass are None. Requires that None is the default value for all fields
+        """
+        return all([getattr(self, field) is None for field in self.__annotations__ if field != "_unique_fields"])
+
 
 @dataclass()
 class User(AbstractDataTableClass):
@@ -46,7 +51,7 @@ class Message(AbstractDataTableClass):
     message: str | None = None
     memo_duration: float | None = None
     transcript: str | None = None
-    has_attachment: bool | None = None
+    mime_type: str | None = None
 
 
 @dataclass()
@@ -54,7 +59,7 @@ class File(AbstractDataTableClass):
     _unique_fields: list[str] = field(default_factory=lambda: ["file_id"])
     file_id: str | None = None
     message_id: str | None = None
-    mime_type: datetime | None = None
+    mime_type: str | None = None
     blob_url: str | None = None
 
 
@@ -70,6 +75,15 @@ class Address(AbstractDataTableClass):
     zip: str | None = None
     city: str | None = None
     country: str | None = None
+
+    def is_complete_address(self):
+        return all([getattr(self, field) is not None for field in [
+            "addressee",
+            "address_line1",
+            "zip",
+            "city",
+            "country",
+        ]])
 
 
 @dataclass()
@@ -106,6 +120,7 @@ class SupabaseClient:
         self,
         url: str = cfg.SUPABASE_URL,
         key: str = cfg.SUPABASE_KEY,
+        bucket=cfg.SUPABASE_BUCKET_NAME
     ):
         """Instantiates an object to query the sql database.
 
@@ -119,6 +134,7 @@ class SupabaseClient:
                 Defaults to os.environ.get("SUPABASE_KEY").
         """
         self.client: Client = create_client(url, key)
+        self.bucket = bucket
 
     def _check_duplicates(self, table: str, data: AbstractDataTableClass) -> list:
         """Checks for a set of column values whether they already exist in the database
@@ -351,6 +367,55 @@ class SupabaseClient:
         return 0, "Letter added successfully"
 
     # ---------------
+
+    def upload_file(self, filebytes: bytes, user_id: str, mime_type: str) -> str:
+        if mime_type == "audio/ogg":
+            suffix = ".ogg"
+        else:
+            raise ValueError(
+                f"mime_type {mime_type} not supported for file upload")
+        # create file name based on user_id and timestamp
+        bucket_path = f"memos/{user_id}/{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}{suffix}"
+        # upload to supabase storage
+        self.client.storage.from_(self.bucket).upload(file=filebytes,
+                                                      path=bucket_path,
+                                                      file_options={"content-type": mime_type})
+
+        return bucket_path
+
+    def register_voice_memo(self, filebytes: bytes, message: Message):
+        if message.user_id is None:
+            raise ValueError(
+                "Message does not have a user_id. Cannot register voice memo")
+        # upload to supabase storage
+        mime_type = "audio/ogg"
+        bucket_path = self.upload_file(
+            filebytes, message.user_id, mime_type=mime_type)
+        file = File(message_id=message.message_id,
+                    mime_type=mime_type, blob_url=bucket_path)
+        self.add_file(file)
+
+    def register_message(self, telegram_id: str, sent_by: str, mime_type: str, msg_text: str | None, transcript: str | None) -> Message:
+        """Registers a message in the database
+
+        Args:
+            telegram_id (str): The telegram_id of the user that sent the message
+            sent_by (str): Whether the message was sent by the user or the bot
+            mime_type (str): The mime_type of the message
+            message (str): The message itself
+
+        Returns:
+            Message: The message object with all the information from the database
+        """
+        user = User(telegram_id=telegram_id)
+        user = self.get_user(user)
+        message = Message(user_id=user.user_id,
+                          sent_by=sent_by,
+                          message=msg_text,
+                          mime_type=mime_type,
+                          transcript=transcript)
+        self.add_message(message)
+        return message
 
     # def get_last_x_memos(self, phone_number: str, n_memos: int) -> list:
     #     assert phone_number[0] != "+", "Phone number should not contain a leading +"

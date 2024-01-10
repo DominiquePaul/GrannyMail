@@ -1,12 +1,16 @@
+import requests
 import grannymail.config as cfg
-from typing import Optional
-from grannymail.utils import get_message
 import grannymail.message_utils as msg_utils
 import grannymail.db_client as db
+from grannymail.utils import get_message
+from grannymail.db_client import User, Message
+from typing import Optional
 from fastapi import FastAPI, Request, Response
-from telegram.ext._contexttypes import ContextTypes
-from telegram.ext import Application, CommandHandler
 from telegram import Update
+from telegram.ext import MessageHandler, CallbackContext
+from telegram.ext import filters
+from telegram.ext import Application, CommandHandler
+from telegram.ext._contexttypes import ContextTypes
 from http import HTTPStatus
 from contextlib import asynccontextmanager
 import logging
@@ -47,6 +51,7 @@ async def process_update(request: Request):
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(update.effective_chat.id)
     msg = get_message('help_welcome_message')
     await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
 
@@ -137,8 +142,38 @@ async def delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text=response_message)
 
 
-#
+async def handle_voice(update: Update, context: CallbackContext):
+    telegram_id = update.message.from_user["username"]
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(chat_id=chat_id, text="A voice memo 😍")
+
+    # Download the voice memo from telegram and upload to the database
+    file = await context.bot.getFile(update.message.voice.file_id)
+    voice_bytes = requests.get(file.file_path).content
+
+    # transcribe the voice memo and update message
+    logging.info("Transcribing voice memo")
+    transcript = msg_utils.transcribe_voice_memo(voice_bytes)
+
+    # Register the message in the database
+    message = db_client.register_message(telegram_id=telegram_id,
+                                         sent_by="user",
+                                         mime_type="audio/ogg",
+                                         msg_text=None,
+                                         transcript=transcript)
+    db_client.register_voice_memo(voice_bytes, message)
+
+    # Create a draft and send it to the user
+    logging.info("Creating draft")
+    transcript_to_letter_text
+
+    logging.info(
+        "Voice memo successfully received. Transcript: \n" + transcript)
+
+
+# Register our handlers
 ptb.add_handler(CommandHandler("help", help))
 ptb.add_handler(CommandHandler("add_address", add_address))
 ptb.add_handler(CommandHandler("show_address_book", show_address_book))
 ptb.add_handler(CommandHandler("delete_address", delete_address))
+ptb.add_handler(MessageHandler(filters.VOICE, handle_voice))

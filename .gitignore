@@ -8,7 +8,7 @@ whisper_models/
 *.env
 data
 gcloud_private_key.json
-sandbox.py
+sandbox
 services/.mypy_cache
 services/database
 .vscode
@@ -98,7 +98,7 @@ target/
 .ipynb_checkpoints
 
 # IPython
-profile_default/
+profile_default/     
 ipython_config.py
 
 # pyenv

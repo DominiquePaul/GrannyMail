@@ -36,6 +36,20 @@ def get_message(msg_name: str) -> str:
     Returns:
         str: The message
     """
-    with open(f"grannymail/messages/{msg_name}.txt", "r") as f:
-        msg = f.read()
-    return msg
+    path = f"grannymail/messages/{msg_name}.txt"
+    return read_txt_file(path)
+
+
+def read_txt_file(path) -> str:
+    """Reads a text file from disk
+
+    Args:
+        path (str): path to the text file
+
+    Returns:
+        str: contents of the text file
+    """
+    with open(path, "r") as f:
+        text = f.read()
+    return text
+

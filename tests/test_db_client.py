@@ -1,11 +1,6 @@
-import os
 import pytest
 from dataclasses import asdict
 from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address
-from dotenv import load_dotenv, find_dotenv
-
-load_dotenv(find_dotenv())
-print(os.environ["SUPABASE_URL"])
 
 
 @pytest.fixture
