@@ -1,4 +1,4 @@
 No message entered. You can use this command to edit the prompt used to create your letter drafts. You can for example include information about the tone, style and relevant important about your addressee that is important to understand your voice memos.
 
-Your current prompt is: 
+Your current prompt is:
 "{}"

@@ -1,2 +1,2 @@
-Please include an address in your /send message to let me know who you want to send it to. You can also just send the number or a keyword that I can use to match your address book is enough, e.g. '/send Linda' or 
+Please include an address in your /send message to let me know who you want to send it to. You can also just send the number or a keyword that I can use to match your address book is enough, e.g. '/send Linda' or
 '/send Park str'

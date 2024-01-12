@@ -8,6 +8,7 @@ from grannymail.pdf_gen import create_letter_pdf_as_bytes
 from grannymail.utils import get_message
 from grannymail.db_client import User, Message, Draft, Order
 from typing import Optional
+import sentry_sdk
 from fastapi import FastAPI, Request, Response
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram._callbackquery import CallbackQuery
@@ -18,6 +19,19 @@ from http import HTTPStatus
 from grannymail.pingen import Pingen
 from contextlib import asynccontextmanager
 import logging
+
+# setup sentry
+if cfg.SENTRY_ENDPOINT:
+    sentry_sdk.init(
+        dsn=cfg.SENTRY_ENDPOINT,
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        traces_sample_rate=1.0,
+        # Set profiles_sample_rate to 1.0 to profile 100%
+        # of sampled transactions.
+        # We recommend adjusting this value in production.
+        profiles_sample_rate=1.0,
+    )
 
 # set up logging
 logger = logging.getLogger(__name__)
