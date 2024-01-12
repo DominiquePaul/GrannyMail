@@ -1,4 +1,4 @@
-
+import sys
 from datetime import datetime
 import requests
 import grannymail.config as cfg
@@ -18,7 +18,15 @@ from http import HTTPStatus
 from grannymail.pingen import Pingen
 from contextlib import asynccontextmanager
 import logging
-logging.basicConfig(level=logging.INFO)
+
+# set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+stream_handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter(
+    "%(asctime)s (%(name)s - %(module)s - %(levelname)s): %(message)s")
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
 
 
 db_client = db.SupabaseClient()
@@ -82,7 +90,7 @@ async def edit_drafting_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
     exit_code, system_error_msg = db_client.update_user(user_data=User(telegram_id=telegram_username),
                                                         user_update=User(prompt=new_prompt))
     if exit_code != 0:
-        logging.error(
+        logger.error(
             "Error from /edit_prompt when trying to update user profile: " + system_error_msg)
     await context.bot.send_message(chat_id=chat_id, text=success_message)
 
@@ -140,7 +148,7 @@ async def delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update.message.from_user["username"])  # type: ignore
     chat_id: int = update.effective_chat.id  # type: ignore
     msg_txt: str = update.message.text  # type: ignore
-    logging.info(f"Received message {msg_txt} from {telegram_username}")
+    logger.info(f"Received message {msg_txt} from {telegram_username}")
 
     # Try to retrieve the user from the database -  Is the user registered?
     try:
@@ -157,12 +165,12 @@ async def delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     address_book = db_client.get_user_addresses(user)
     try:
         reference_idx = int(msg_txt)
-        logging.info(
+        logger.info(
             f"Identified message as int and using index {reference_idx} to delete address")
     except ValueError:
         reference_idx = msg_utils.fetch_closest_address_index(
             msg_txt, address_book)
-        logging.info(
+        logger.info(
             f"Could not convert message {msg_txt} to int. Used fuzzy search to identify index {reference_idx} for deletion")
     if not 0 < reference_idx <= len(address_book):
         error_message = get_message('delete_address_invalid_idx')
@@ -186,7 +194,7 @@ async def handle_voice(update: Update, context: CallbackContext):
     voice_bytes = requests.get(file.file_path).content
 
     # transcribe the voice memo and update message
-    logging.info("Transcribing voice memo")
+    logger.info("Transcribing voice memo")
     transcript = msg_utils.transcribe_voice_memo(voice_bytes)
 
     # Register the message in the database
@@ -196,20 +204,20 @@ async def handle_voice(update: Update, context: CallbackContext):
                                          msg_text=None,
                                          transcript=transcript)
     db_client.register_voice_memo(voice_bytes, message)
-    logging.info("Voice memo w/ success received. Transcript: \n" + transcript)
+    logger.info("Voice memo w/ success received. Transcript: \n" + transcript)
 
     # Create a draft and send it to the user
     # Create a pdf
-    logging.info("Creating draft text from transcript")
+    logger.info("Creating draft text from transcript")
     letter_text = msg_utils.transcript_to_letter_text(transcript, user)
-    logging.info("Creating pdf")
+    logger.info("Creating pdf")
     draft_bytes = create_letter_pdf_as_bytes(letter_text)
 
     # Upload the pdf and register the draft in the database
     db_client.register_draft(
         Draft(user_id=user.user_id, text=letter_text), draft_bytes)
 
-    logging.info("Sending pdf")
+    logger.info("Sending pdf")
     await context.bot.send_document(chat_id, draft_bytes, filename="draft.pdf")
 
 
@@ -247,7 +255,7 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     address = address_book[address_idx]
 
     # Create a letter with the address and the draft text
-    logging.info("Creating pdf")
+    logger.info("Creating pdf")
     draft_bytes = create_letter_pdf_as_bytes(
         draft.text, address)  # type: ignore
     db_client.register_draft(
