@@ -63,21 +63,23 @@ async def process_update(request: Request):
     return Response(status_code=HTTPStatus.OK)
 
 
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id: str = (update.message.from_user["username"])  # type: ignore
+    logging.info(f"/help from TID: {telegram_id}")
     chat_id: int = update.effective_chat.id  # type: ignore
     msg = get_message('help_welcome_message')
     await context.bot.send_message(chat_id=chat_id, text=msg)
 
 
-async def edit_drafting_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_username: str = (
-        update.message.from_user["username"])  # type: ignore
+async def handle_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id: str = (update.message.from_user["username"])  # type: ignore
+    logging.info(f"/edit_prompt from TID: {telegram_id}")
     chat_id: int = update.effective_chat.id  # type: ignore
     msg_txt: str = update.message.text  # type: ignore
-    user = db_client.get_user(User(telegram_id=telegram_username))
+    user = db_client.get_user(User(telegram_id=telegram_id))
 
     # If the message is empty we send instructions on how to use the command
-    if msg_utils.is_message_empty(msg_txt, "/edit_drafting_prompt"):
+    if msg_utils.is_message_empty(msg_txt, "/edit_prompt"):
 
         user_error_message = get_message(
             'edit_prompt_msg_empty').format(user.prompt)
@@ -87,7 +89,7 @@ async def edit_drafting_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
     # If the message is not empty, we update the user's prompt with the text
     new_prompt = msg_txt.replace("/edit_prompt", "").strip(" ")
     success_message = get_message('edit_prompt_success').format(new_prompt)
-    exit_code, system_error_msg = db_client.update_user(user_data=User(telegram_id=telegram_username),
+    exit_code, system_error_msg = db_client.update_user(user_data=User(telegram_id=telegram_id),
                                                         user_update=User(prompt=new_prompt))
     if exit_code != 0:
         logger.error(
@@ -95,14 +97,14 @@ async def edit_drafting_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
     await context.bot.send_message(chat_id=chat_id, text=success_message)
 
 
-async def show_address_book(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_username: str = (
-        update.message.from_user["username"])  # type: ignore
+async def handle_show_address_book(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id: str = (update.message.from_user["username"])  # type: ignore
     chat_id: int = update.effective_chat.id  # type: ignore
+    logging.info(f"/show_address_book from TID: {telegram_id}")
 
     # Try to retrieve the user from the database -  Is the user registered?
     try:
-        user = db_client.get_user(db.User(telegram_id=telegram_username))
+        user = db_client.get_user(db.User(telegram_id=telegram_id))
     except db.NoEntryFoundError:
         error_message = get_message('error_telegram_user_not_found')
         await context.bot.send_message(chat_id=chat_id, text=error_message)
@@ -123,7 +125,9 @@ async def show_address_book(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text=msg)
 
 
-async def add_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_add_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id: str = (update.message.from_user["username"])  # type: ignore
+    logging.info(f"/add_address from TID: {telegram_id}")
     msg_txt: str = update.message.text  # type: ignore
     chat_id: int = update.effective_chat.id  # type: ignore
     user_error_message = msg_utils.error_in_address(msg_txt)
@@ -143,16 +147,16 @@ async def add_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text=msg)
 
 
-async def delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_username: str = (
-        update.message.from_user["username"])  # type: ignore
+async def handle_delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id: str = update.message.from_user["username"]  # type: ignore
+    logging.info(f"/delete_address from TID: {telegram_id}")
     chat_id: int = update.effective_chat.id  # type: ignore
     msg_txt: str = update.message.text  # type: ignore
-    logger.info(f"Received message {msg_txt} from {telegram_username}")
+    logger.info(f"Received message {msg_txt} from {telegram_id}")
 
     # Try to retrieve the user from the database -  Is the user registered?
     try:
-        user = db_client.get_user(db.User(telegram_id=telegram_username))
+        user = db_client.get_user(db.User(telegram_id=telegram_id))
     except db.NoEntryFoundError:
         error_message = get_message('error_telegram_user_not_found')
         await context.bot.send_message(chat_id=chat_id, text=error_message)
@@ -186,6 +190,7 @@ async def handle_voice(update: Update, context: CallbackContext):
     telegram_id: str = update.message.from_user["username"]  # type: ignore
     chat_id: int = update.effective_chat.id  # type: ignore
     file_id: str = update.message.voice.file_id  # type: ignore
+    logging.info(f"/handle_voice from TID: {telegram_id}")
     await context.bot.send_message(chat_id=chat_id, text="A voice memo 😍 Processing... 🤖")
     user = db_client.get_user(User(telegram_id=telegram_id))
 
@@ -226,6 +231,7 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id: int = update.effective_chat.id  # type: ignore
     msg_txt: str = msg_utils.strip_command(
         update.message.text, "/send")  # type: ignore
+    logging.info(f"/handle_send callback from TID: {telegram_id}")
     user = db_client.get_user(User(telegram_id=telegram_id))
     # check whether the user has any addresses to send ot
     if db_client.get_user_addresses(user) == []:
@@ -305,10 +311,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await query.edit_message_text(text="Letter sent! 💌")
 
 # Register our handlers
-ptb.add_handler(CommandHandler("help", help))
-ptb.add_handler(CommandHandler("add_address", add_address))
-ptb.add_handler(CommandHandler("show_address_book", show_address_book))
-ptb.add_handler(CommandHandler("delete_address", delete_address))
-ptb.add_handler(CommandHandler("edit_prompt", edit_drafting_prompt))
+ptb.add_handler(CommandHandler("help", handle_help))
+ptb.add_handler(CommandHandler("add_address", handle_add_address))
+ptb.add_handler(CommandHandler("show_address_book", handle_show_address_book))
+ptb.add_handler(CommandHandler("delete_address", handle_delete_address))
+ptb.add_handler(CommandHandler("edit_prompt", handle_edit_prompt))
 ptb.add_handler(MessageHandler(filters.VOICE, handle_voice))
 ptb.add_handler(CallbackQueryHandler(button))

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, ANY
-from grannymail.telegrambot import handle_voice, edit_drafting_prompt
+from grannymail.telegrambot import handle_voice, handle_edit_prompt
 from grannymail.db_client import User
 from grannymail.utils import get_message
 
@@ -39,12 +39,12 @@ async def test_handle_voice(mock_update, mock_context, mock_requests_get, user):
 
 
 @pytest.mark.asyncio
-async def test_edit_drafting_prompt(mock_update, mock_context, dbclient, user):
+async def test_handle_edit_prompt(mock_update, mock_context, dbclient, user):
     # setup mocks
     mock_update.message.text = "/edit_prompt use a funny tone"
 
     # run function
-    await edit_drafting_prompt(mock_update, mock_context)
+    await handle_edit_prompt(mock_update, mock_context)
 
     # check results
     expected_text = get_message(
