@@ -3,6 +3,7 @@ repos:
     rev: v4.4.0
     hooks:
     -   id: trailing-whitespace
+    -   git id: requirements-txt-fixer
     -   id: end-of-file-fixer
     -   id: check-yaml
     -   id: detect-private-key
