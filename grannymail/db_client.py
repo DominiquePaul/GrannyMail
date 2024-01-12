@@ -5,8 +5,17 @@ from datetime import datetime
 
 
 class NoEntryFoundError(Exception):
+    """An error raised when no entry was found for retrieval or deletion and it might go unnoticed if not raised. Deletion is probably the best example.
+    """
+
     def __init__(self, key: str, data: str | float | int) -> None:
         self.message = f"No entry found in the database for searching for {key} = {data}"
+        super().__init__(self.message)
+
+
+class DuplicateEntryError(Exception):
+    def __init__(self, message="Duplicate entry already exists in the database"):
+        self.message = message
         super().__init__(self.message)
 
 
@@ -16,7 +25,7 @@ class AbstractDataTableClass:
     values in that table that must be unique. This assumption simplifies a lot
     of the implemented methods
     """
-    _unique_fields: list[str] = field(default_factory=lambda: [])
+    _unique_fields: list[str]
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None and k != "_unique_fields"}
@@ -26,49 +35,67 @@ class AbstractDataTableClass:
         """
         return all([getattr(self, field) is None for field in self.__annotations__ if field != "_unique_fields"])
 
+    def find_different_fields(self, obj_compared) -> list:
+        """Compares objec with another object of the same type and compares all fields that have changed except for fields that are None in the incoming object"""
+        differing_fields = []
+        if not isinstance(obj_compared, AbstractDataTableClass):
+            raise TypeError(
+                f"Expected an object of type AbstractDataTableClass. Instead got {type(obj_compared)}")
+        if self.__annotations__ != obj_compared.__annotations__:
+            raise ValueError("The two objects must have the same fields")
+        for field_name in self.__annotations__:
+            if getattr(obj_compared, field_name) is None:
+                continue
+            if getattr(self, field_name) != getattr(obj_compared, field_name):
+                differing_fields.append(field_name)
+        return differing_fields
 
-@dataclass()
+
+@dataclass
 class User(AbstractDataTableClass):
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["user_id", "email", "phone_number", "telegram_id"], kw_only=True)
     user_id: str | None = field(default=None)
-    created_at: datetime | None = field(default=None)
+    created_at: str | None = field(default=None)
     first_name: str | None = field(default=None)
     last_name: str | None = field(default=None)
     email: str | None = field(default=None)
     phone_number: str | None = field(default=None)
     telegram_id: str | None = field(default=None)
-    _unique_fields: list[str] = field(default_factory=lambda: [
-        "user_id", "email", "phone_number", "telegram_id"
-    ])
+    prompt: str | None = field(default=None)
 
 
 @dataclass
 class Message(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["message_id"])
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["message_id"], kw_only=True)
+    user_id: str
+    sent_by: str
     message_id: str | None = None
-    user_id: str | None = None
-    timestamp: datetime | None = None
-    sent_by: str | None = None
+    timestamp: str | None = None
     message: str | None = None
     memo_duration: float | None = None
     transcript: str | None = None
     mime_type: str | None = None
 
 
-@dataclass()
+@dataclass
 class File(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["file_id"])
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["file_id"], kw_only=True)
     file_id: str | None = None
     message_id: str | None = None
     mime_type: str | None = None
-    blob_url: str | None = None
+    blob_path: str | None = None
 
 
-@dataclass()
+@dataclass
 class Address(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["address_id"])
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["address_id"], kw_only=True)
+    created_at: str | None = None
     address_id: str | None = None
     user_id: str | None = None
-    created_at: datetime | None = None
     addressee: str | None = None
     address_line1: str | None = None
     address_line2: str | None = None
@@ -86,33 +113,52 @@ class Address(AbstractDataTableClass):
         ]])
 
 
-@dataclass()
+@dataclass
 class Draft(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["draft_id"])
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["draft_id"], kw_only=True)
     draft_id: str | None = None
     user_id: str | None = None
-    created_at: datetime | None = None
+    created_at: str | None = None
     text: str | None = None
+    blob_path: str | None = None
+    builds_on: str | None = None
+    address_id: str | None = None
 
 
-@dataclass()
-class Letter(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["letter_id"])
-    letter_id: str | None = None
+@dataclass
+class Order(AbstractDataTableClass):
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["order_id"], kw_only=True)
     user_id: str | None = None
     draft_id: str | None = None
     address_id: str | None = None
-    created_at: datetime | None = None
-    blob_url: str | None = None
-    is_sent: bool | None = None
+    blob_path: str | None = None
+    order_id: str | None = None
+    created_at: str | None = None
     price: float | None = None
 
 
-@dataclass()
+@dataclass
 class Attachment(AbstractDataTableClass):
-    _unique_fields: list[str] = field(default_factory=lambda: ["draft_id"])
-    draft_id: str | None = None
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["attachment_id"], kw_only=True)
+    attachment_id: str | None = None
     file_id: str | None = None
+
+
+@dataclass
+class Changelog(AbstractDataTableClass):
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["changelog_id"], kw_only=True)
+    changelog_id: str | None = None
+    timestamp: str | None = None
+    table_name: str | None = None
+    row_id: str | None = None
+    column_name: str | None = None
+    column_type: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
 
 
 class SupabaseClient:
@@ -128,23 +174,33 @@ class SupabaseClient:
         class that connects to a different sql database provider
 
         Args:
-            url (str, optional): URL of the supabase sql database. Defaults 
+            url (str, optional): URL of the supabase sql database. Defaults
                 to os.environ.get("SUPABASE_URL").
-            key (str, optional): secret API key (not the anon key) Key must be private. 
+            key (str, optional): secret API key (not the anon key) Key must be private.
                 Defaults to os.environ.get("SUPABASE_KEY").
         """
         self.client: Client = create_client(url, key)
         self.bucket = bucket
+        self.obj_to_table = {
+            User: "users",
+            Message: "messages",
+            File: "files",
+            Address: "addresses",
+            Draft: "drafts",
+            Order: "orders",
+            Attachment: "attachments",
+            Changelog: "changelog"
+        }
 
-    def _check_duplicates(self, table: str, data: AbstractDataTableClass) -> list:
+    def _check_duplicates(self, table: str, data: AbstractDataTableClass):
         """Checks for a set of column values whether they already exist in the database
 
         Args:
             table (str): the DB table to search through
-            values (dict): the values to search for. For convenience the entire set of data 
+            values (dict): the values to search for. For convenience the entire set of data
                 that should be added to the table can be passed here.
-            keys (list): the keys of the values dict that should actually checked for existence. 
-                The values in the list are expected to be found as keys in the values dict and as 
+            keys (list): the keys of the values dict that should actually checked for existence.
+                The values in the list are expected to be found as keys in the values dict and as
                     columns in the table.
 
         Returns:
@@ -160,7 +216,8 @@ class SupabaseClient:
                 )
                 if response.data != []:
                     duplicated_values.append(key)
-        return duplicated_values
+        if duplicated_values:
+            raise DuplicateEntryError(duplicated_values)
 
     def _validate_supabase_respones(self, response: list, field_name: str, field_value: str | float | int) -> None:
         if not isinstance(response, list):
@@ -191,12 +248,41 @@ class SupabaseClient:
                 response, unique_field, getattr(obj, unique_field))
             return response[0]
 
+    def _delete_entry(self, obj: AbstractDataTableClass, deletion_key: str | None = None) -> int:
+        """Completes the information of an object from the database by searching for its unique values
+
+        Args:
+            obj (AbstractDataTableClass): The object to delete
+            deletion_key (str, optional): The key to use for deletion. Defaults to None. If None, the first unique key of the object is used
+
+        Returns:
+            int: the number of items deleted. Throws an error if no item is deleted
+
+        """
+        if not isinstance(obj, AbstractDataTableClass):
+            raise ValueError(
+                f"Expected an object of type AbstractDataTableClass. Instead got {type(obj)}")
+        table = self.obj_to_table[type(obj)]
+        if deletion_key is None:
+            deletion_key = obj._unique_fields[0]
+            if getattr(obj, deletion_key) is None:
+                raise ValueError(
+                    f"Object of type {type(obj)} does not have a value for {deletion_key} that can be " +
+                    "used for deletion and no alternative deletion key was provided using 'deletion_key'")
+        response = self.client.table(table).delete().eq(
+            deletion_key, getattr(obj, deletion_key)).execute()
+        items_deleted = len(response.data)
+        if items_deleted == 0:
+            raise NoEntryFoundError(deletion_key, getattr(obj, deletion_key))
+        else:
+            return items_deleted
+
     def get_user(self, data: User) -> User:
         """Completes User information by retrieving full record from the database
 
         Args:
-            data (User): An object of type User. The object must have at 
-            least one value that is unique in the database and that can be 
+            data (User): An object of type User. The object must have at
+            least one value that is unique in the database and that can be
             used to find the record.
 
         Returns:
@@ -208,21 +294,20 @@ class SupabaseClient:
         """Adds a user to the database
 
         Args:
-            first_name (str): first name of the user
-            last_name (str): last name of the user
-            phone_number (str): phone number of the user
+            user (User): information about the user to be added. The user must have at least one of the following fields: email, phone_number, telegram_id
         """
         duplicates = self._check_duplicates("users", user)
         if duplicates:
+            DuplicateEntryError()
             return 1, f"A existing user was already found with {', '.join(duplicates)}"
         else:
             r = self.client.table("users").insert(user.to_dict()).execute()
-            print(
-                "DEBUG: add user, what does the response of supabase look like after adding a user?")
-            print(r)
-            print(type(r))
-            print(dir(r))
             return 0, "User added successfully"
+
+    def add_changelog(self, changelog: Changelog) -> tuple[int, str]:
+        r = self.client.table("changelog").insert(
+            changelog.to_dict()).execute()
+        return 0, "Changelog added successfully"
 
     def update_user(self, user_data: User, user_update: User) -> tuple[int, str]:
         """Updates a user in the database
@@ -231,6 +316,22 @@ class SupabaseClient:
             user_data (User): The user data to update. The user data must contain the user_id
         """
         user_data_full = self.get_user(user_data)
+        fields_updated = user_data_full.find_different_fields(user_update)
+        if not fields_updated:
+            return 1, "No fields were updated"
+        else:
+            timestamp_utc = str(datetime.utcnow())
+            for field in fields_updated:
+                changelog = Changelog(
+                    timestamp=timestamp_utc,
+                    table_name="users",
+                    row_id=user_data_full.user_id,
+                    column_name=field,
+                    column_type=type(getattr(user_update, field)).__name__,
+                    old_value=getattr(user_data_full, field),
+                    new_value=getattr(user_update, field)
+                )
+                self.add_changelog(changelog)
 
         self.client.table("users").update(user_update.to_dict()).eq(
             "user_id", user_data_full.user_id).execute()
@@ -251,8 +352,8 @@ class SupabaseClient:
         """Completes User information by retrieving full record from the database
 
         Args:
-            data (Message): An object of type Message. The object must have at 
-            least one value that is unique in the database and that can be 
+            data (Message): An object of type Message. The object must have at
+            least one value that is unique in the database and that can be
             used to find the record.
 
         Returns:
@@ -273,21 +374,23 @@ class SupabaseClient:
         message_list: list[Message] = [Message(**message) for message in data]
         return message_list
 
-    def add_message(self, msg_data: Message) -> tuple[int, str]:
+    def add_message(self, msg_data: Message) -> Message:
         duplicates = self._check_duplicates("messages", msg_data)
         if duplicates:
+            raise
             return 1, f"A existing user was already found with {', '.join(duplicates)}"
         else:
-            self.client.table("messages").insert(
+            r = self.client.table("messages").insert(
                 msg_data.to_dict()).execute()
-        return 0, "Message added successfully"
+
+        return Message(**r.data[0])
 
     def get_file(self, data: File) -> File:
         """Completes User information by retrieving full record from the database
 
         Args:
-            data (Message): An object of type Message. The object must have at 
-            least one value that is unique in the database and that can be 
+            data (Message): An object of type Message. The object must have at
+            least one value that is unique in the database and that can be
             used to find the record.
 
         Returns:
@@ -328,6 +431,9 @@ class SupabaseClient:
         return 0, "Address added successfully"
 
     def delete_address(self, address: Address) -> tuple[int, str]:
+        if address.address_id is None:
+            raise ValueError(
+                "Address does not have a address_id. Cannot delete address")
         (self.client.table('addresses')
          .delete()
          .eq('address_id', address.address_id)
@@ -362,15 +468,13 @@ class SupabaseClient:
         self.client.table("attachments").insert(attachment.to_dict()).execute()
         return 0, "Draft added successfully"
 
-    def add_letter(self, letter: Letter) -> tuple[int, str]:
-        self.client.table("letters").insert(letter.to_dict()).execute()
-        return 0, "Letter added successfully"
-
     # ---------------
 
     def upload_file(self, filebytes: bytes, user_id: str, mime_type: str) -> str:
         if mime_type == "audio/ogg":
             suffix = ".ogg"
+        elif mime_type == "application/pdf":
+            suffix = ".pdf"
         else:
             raise ValueError(
                 f"mime_type {mime_type} not supported for file upload")
@@ -383,6 +487,12 @@ class SupabaseClient:
 
         return bucket_path
 
+    def download_draft(self, draft: Draft) -> bytes:
+        if draft.blob_path is None:
+            raise ValueError(
+                "Draft does not have a blob_path. Cannot download draft")
+        return self.client.storage.from_(self.bucket).download(draft.blob_path)
+
     def register_voice_memo(self, filebytes: bytes, message: Message):
         if message.user_id is None:
             raise ValueError(
@@ -392,10 +502,10 @@ class SupabaseClient:
         bucket_path = self.upload_file(
             filebytes, message.user_id, mime_type=mime_type)
         file = File(message_id=message.message_id,
-                    mime_type=mime_type, blob_url=bucket_path)
+                    mime_type=mime_type, blob_path=bucket_path)
         self.add_file(file)
 
-    def register_message(self, telegram_id: str, sent_by: str, mime_type: str, msg_text: str | None, transcript: str | None) -> Message:
+    def register_message(self, user: User, sent_by: str, mime_type: str, msg_text: str | None, transcript: str | None) -> Message:
         """Registers a message in the database
 
         Args:
@@ -407,122 +517,42 @@ class SupabaseClient:
         Returns:
             Message: The message object with all the information from the database
         """
-        user = User(telegram_id=telegram_id)
-        user = self.get_user(user)
+        if user.user_id is None:
+            raise ValueError(
+                "User does not have a user_id. Cannot register message")
         message = Message(user_id=user.user_id,
                           sent_by=sent_by,
                           message=msg_text,
                           mime_type=mime_type,
                           transcript=transcript)
-        self.add_message(message)
-        return message
+        return self.add_message(message)
 
-    # def get_last_x_memos(self, phone_number: str, n_memos: int) -> list:
-    #     assert phone_number[0] != "+", "Phone number should not contain a leading +"
-    #     user_id = self.get_user_uid_from_phone(phone_number)
-    #     response = (
-    #         self.client.table("messages")
-    #         .select("*")
-    #         .eq("media_type", "audio")
-    #         .eq("user_id", user_id)
-    #         .order("timestamp", desc=False)
-    #         .execute()
-    #     )
-    #     data = response.data
-    #     return data[:n_memos]
+    def get_draft(self, draft: Draft):
+        self._get_obj_info("drafts", draft)
 
-    # def update_message_by_uid(self, uid: str, update_dict: dict) -> None:
-    #     self.client.table("messages").update(update_dict).eq(
-    #         "message_id", uid
-    #     ).execute()
+    def add_order(self, order: Order):
+        for field in ["user_id", "draft_id", "address_id", "blob_path"]:
+            if getattr(order, field) is None:
+                raise ValueError(
+                    f"Order does not have a {field}. Cannot add order")
+        duplicates = self._check_duplicates("orders", order)
+        if duplicates:
+            return 1, f"A existing user was already found with {', '.join(duplicates)}"
+        else:
+            r = self.client.table("users").insert(order.to_dict()).execute()
+            return 0, "Order added successfully"
 
-    # def get_last_nth_user_message(self, phone_number: str, n=0) -> dict:
-    #     user_id = self.get_user_uid_from_phone(phone_number)
-    #     response = (
-    #         self.client.table("messages")
-    #         .select("*")
-    #         .eq("user_id", user_id)
-    #         .order("timestamp", desc=True)
-    #         .execute()
-    #     )
-    #     data = response.data
-    #     if n + 1 > len(data):
-    #         raise ValueError(
-    #             f"Only {len(data)} messages found for that user. Cannot return the {n}th message"
-    #         )
-    #     return data[n]
+    def get_order(self, order: Order):
+        self._get_obj_info("orders", order)
 
-    # # def get_user_uid_from_phone(self, phone_number: str) -> str:
-    # #     data = self.client.table("users").select(
-    # #         "*").eq("phone_number", phone_number).execute().data
-    # #     assert len(data) <= 1, "More than one user found for that phone number"
-    # #     assert len(data) == 1, "No user found for that phone number"
-    # #     return data[0]["user_id"]
+    def register_draft(self, draft: Draft, pdf_bytes: bytes):
+        if draft.user_id is None:
+            raise ValueError(
+                "Draft does not have a user_id. Cannot register draft")
 
-    # def add_address_to_user_addressbook(
-    #     self, phone_number: str, address_details: dict
-    # ) -> None:
-    #     response = (
-    #         self.client.table("users")
-    #         .select("*")
-    #         .eq("phone_number", phone_number)
-    #         .execute()
-    #     )
-    #     address_details["user_id"] = response.data[0]["user_id"]
-    #     self.client.table("address_book").insert(address_details).execute()
-
-    # def get_users_address_book(self, phone_number: str) -> list[dict]:
-    #     user_id = self.get_user_uid_from_phone(phone_number)
-    #     response = (
-    #         self.client.table("address_book")
-    #         .select("*")
-    #         .eq("user_id", user_id)
-    #         .execute()
-    #     )
-    #     return response.data
-
-    # def add_letter(self, value_dict: dict) -> str:
-    #     value_dict.update({"letter_id": letter_id})
-    #     self.client.table("letters").insert(value_dict).execute()
-    #     return letter_id
-
-    # def get_users_last_letter_content(self, phone_number: str) -> dict:
-    #     user_id = self.get_user_uid_from_phone(phone_number)
-    #     response = (
-    #         self.client.table("letters").select(
-    #             "*").eq("user_id", user_id).execute()
-    #     ).data
-    #     assert len(response) > 0, "User has no previous letter"
-    #     last_letter_content: dict = response[-1]
-    #     return last_letter_content
-
-    # def update_letter_content(self, letter_id: str, update_vals: dict) -> None:
-    #     self.client.table("letters").update(update_vals).eq(
-    #         "letter_id", letter_id
-    #     ).execute()
-
-    # def delete_table_contents(self, table_name):
-    #     id_col_name = list(self.client.table(
-    #         table_name).select("*").execute().data[0].keys())[0]
-    #     res = input(
-    #         f"Are you sure you want to delete the table {table_name}? Type DELETE to confirm: ")
-    #     if res == "DELETE":
-    #         self.client.table(table_name).delete().neq(
-    #             id_col_name, uid).execute()
-    #         print("Table deleted")
-    #     else:
-    #         print("Aborting delete operation")
-
-    # def delete_all_tables(self):
-    #     # uid = str(uuid4())
-    #     res = input(
-    #         f"Are you sure you want to delete ALL TABLES? Type 'YES, DELETE ALL' to confirm: ")
-    #     if res == "YES, DELETE ALL":
-    #         for table_name in ["letters", "address_book", "messages", "users"]:
-    #             id_col_name = list(self.client.table(
-    #                 table_name).select("*").execute().data[0].keys())[0]
-    #             self.client.table(table_name).delete().neq(
-    #                 id_col_name, uid).execute()
-    #             print(f"{table_name} deleted")
-    #     else:
-    #         print("Aborting delete operation")
+        # upload to supabase storage
+        mime_type = "application/pdf"
+        bucket_path = self.upload_file(
+            pdf_bytes, draft.user_id, mime_type=mime_type)
+        draft.blob_path = bucket_path
+        self.add_draft(draft)

@@ -1,25 +1,28 @@
-from pathlib import Path
-import os
 import io
 import numpy as np
-from rapidfuzz import fuzz
-from grannymail.db_client import Address
-from grannymail.utils import get_message
-
 from openai import OpenAI
+from rapidfuzz import fuzz
+
+from grannymail.db_client import Address, User, SupabaseClient
+from grannymail.utils import get_message, read_txt_file
+
 openai_client = OpenAI()
+db_client = SupabaseClient()
 
 
-def is_message_empty(msg: str) -> bool:
+def is_message_empty(msg: str, remove_txt: str = "") -> bool:
     """Checks if a message is empty
 
     Args:
         msg (str): The message to check
+        remove_txt (str): text known to be in the command that you want to remove
 
     Returns:
         bool: True if the message is empty, False otherwise
     """
-    return len(msg.strip()) == 0
+    stripped_text = msg.replace(remove_txt, "").strip()
+    is_empty = len(stripped_text) == 0
+    return is_empty
 
 
 def error_in_address(msg: str) -> str | None:
@@ -34,10 +37,21 @@ def error_in_address(msg: str) -> str | None:
         return get_message("add_address_msg_too_long")
     return None  # Explicitly return None for clarity
 
+def strip_command(msg: str, command: str) -> str:
+    """Strips a command from a message
+
+    Args:
+        msg (str): The message
+        command (str): The command to strip
+
+    Returns:
+        str: The message with the command stripped
+    """
+    return msg.replace(command, "").strip()
 
 def parse_new_address(msg: str) -> Address:
     """
-    Parse a user message into an address object. The requirement is 
+    Parse a user message into an address object. The requirement is
     that the each item is separated by a newline.
 
     Args:
@@ -128,7 +142,7 @@ def transcribe_voice_memo(voice_bytes: bytes) -> str:
     return transcript.text
 
 
-def transcript_to_letter_text(transcript: str, prompt: str = None) -> str:
+def transcript_to_letter_text(transcript: str, user: User) -> str:
     """Converts a transcript to a letter text
 
     Args:
@@ -137,5 +151,22 @@ def transcript_to_letter_text(transcript: str, prompt: str = None) -> str:
     Returns:
         str: The letter text
     """
-    if not prompt:
-        prompt = read_txt_file("letter_prompt")
+    # get system prompt
+    system_msg = read_txt_file("grannymail/prompts/system_prompt_de.txt")
+
+    # get current prompt of user
+    user = db_client.get_user(user)
+    user_prompt = user.prompt
+    if user_prompt is None:
+        user_prompt = read_txt_file("grannymail/prompts/system_prompt_de.txt")
+    final_prompt = f"Instructions:\n User input:\n{user_prompt}\nTranscript of the message: {transcript} Your letter:"
+
+    # feed into gpt:
+    completion = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": final_prompt}
+        ]
+    )
+    return completion.choices[0].message.content

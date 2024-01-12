@@ -1,5 +1,6 @@
 import os
 from grannymail.pdf_gen import create_letter_pdf_as_bytes, create_and_save_letter
+from grannymail.db_client import Address
 from pytest import fixture
 from grannymail.utils import read_txt_file
 
@@ -8,14 +9,13 @@ from grannymail.utils import read_txt_file
 def addressee_and_text():
     example_text_path = "./tests/test_data/example_letter_content.txt"
     example_text = read_txt_file(example_text_path)
-    example_address = {
-        "name": "Doris Paul",
-        "address_line1": "Am Osterietweg 10",
-        "address_line2": None,
-        "zip": "50996",
-        "city": "Cologne",
-        "country": "Germany",
-    }
+    example_address = Address(
+        addressee="Doris Paul",
+        address_line1="Am Osterietweg 10",
+        address_line2=None,
+        zip="50996",
+        city="Cologne",
+        country="Germany")
     return example_text, example_address
 
 

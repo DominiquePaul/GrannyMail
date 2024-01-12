@@ -3,54 +3,35 @@ from dataclasses import asdict
 from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address
 
 
-@pytest.fixture
-def client():
-    # Perform setup for your client object
-    client = SupabaseClient()  # Replace with the actual instantiation of your client class
-    # You can perform additional setup if needed
-    yield client  # This is where the fixture provides the client object to the test
-    # Optionally, perform teardown or cleanup after the test is done
-
-
-@pytest.fixture
-def client_and_user():
-    # Perform setup for your client object
-    client = SupabaseClient()  # Replace with the actual instantiation of your client class
-    user = User(email="test@test.com")
-    client.add_user(user)
-    user = client.get_user(user)
-    # You can perform additional setup if needed
-    yield client, user  # This is where the fixture provides the client object to the test
-    # Optionally, perform teardown or cleanup after the test is done
-    client.delete_user(User(email="test@test.com"))
-
-
 class TestUser():
     def test_to_dict(self):
         user = User(
             first_name="test_dom",
             last_name="test_Paul",
-            email="Dominique")
+            email="test@dom.com",
+            telegram_id="dominique_paul"
+        )
         expected = {"first_name": "test_dom",
                     "last_name": "test_Paul",
-                    "email": "Dominique"}
+                    "email": "test@dom.com",
+                    "telegram_id": "dominique_paul"}
         assert expected == user.to_dict()
 
 
-def test_add_user(client):
+def test_add_user(dbclient):
     # Create a new user
     user_to_add = User(
-        first_name="test_dom",
-        last_name="test_Paul",
-        email="test@dom.com",
-        telegram_id="dominique_paul"
+        first_name="Mike",
+        last_name="Tyson",
+        email="mike@tyson.com",
+        telegram_id="mike_tyson"
     )
-    client.add_user(user_to_add)
-    user_retrieved = client.get_user(User(telegram_id="dominique_paul"))
+    dbclient.add_user(user_to_add)
+    user_retrieved = dbclient.get_user(User(telegram_id="mike_tyson"))
 
     # Check that the returned user is of the right type
     assert isinstance(
-        user_retrieved, User), f"Wrong class returned. Expected user, got {type(user)}"
+        user_retrieved, User), f"Wrong class returned. Expected user, got {type(user_retrieved)}"
 
     # Check that all values are in the database
     user2_dict = {key: value for key, value in asdict(
@@ -58,14 +39,13 @@ def test_add_user(client):
     assert user_to_add.to_dict() == user2_dict
 
     # Delete user
-    client.delete_user(user_to_add)
+    dbclient.delete_user(user_to_add)
 
     with pytest.raises(NoEntryFoundError) as exc_info:
-        client.get_user(User(telegram_id="dominique_paul"))
+        dbclient.get_user(User(telegram_id="mike_tyson"))
 
 
-def test_add_adress(client_and_user):
-    client, user = client_and_user
+def test_add_adress(dbclient, user):
     address = Address(
         user_id=user.user_id,
         addressee="test_recipient",
@@ -75,15 +55,27 @@ def test_add_adress(client_and_user):
         zip="test_postal_code",
         country="test_country"
     )
-    r, _ = client.add_address(address)
+    r, _ = dbclient.add_address(address)
     assert r == 0
 
-    address_retrieved = client.get_user_addresses(user)
+    address_retrieved = dbclient.get_user_addresses(user)
     assert isinstance(address_retrieved, list)
+    assert len(address_retrieved) == 1
     reduced_address_received = {
         key: value for key, value in address_retrieved[0].to_dict().items() if key in address.to_dict()}
     assert address.to_dict() == reduced_address_received
 
-    client.delete_address(address_retrieved[0])
-    with pytest.raises(NoEntryFoundError) as exc_info:
-        client.get_user_addresses(user)
+    # delete address
+    dbclient.delete_address(address_retrieved[0])
+    assert dbclient.get_user_addresses(user) == []
+
+
+def test_delete_obj(dbclient):
+    user = User(telegram_id="d0ominique", email="fictive@email.com")
+    dbclient.add_user(user)
+    user_full = dbclient.get_user(user)
+
+    with pytest.raises(ValueError) as exc_info:
+        dbclient._delete_entry(user)
+
+    assert dbclient._delete_entry(user_full) == 1

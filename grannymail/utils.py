@@ -52,4 +52,3 @@ def read_txt_file(path) -> str:
     with open(path, "r") as f:
         text = f.read()
     return text
-

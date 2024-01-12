@@ -259,18 +259,3 @@ class Pingen:
             raise ValueError(
                 f"letter_uuid should be a string of length 1, but is {len(response)}")
         return response[0]
-
-
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    pingen = Pingen()
-    file_path = "./data/letters/00106968-6967-42a2-95c4-bfbf99845f59.pdf"
-    with open(file_path, "rb") as f:
-        file_as_bytes = f.read()
-    pingen_uid = pingen.upload_and_send_letter(
-        file_as_bytes, "test_file_2.pdf")
-    print(pingen_uid)
-    print(pingen.get_letter_details(pingen_uid))
-    # pingen.get_letter_details("65012395-c251-425f-8acd-9a903e1ac267")
