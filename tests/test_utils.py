@@ -1,17 +1,15 @@
-from grannymail.utils import get_message
+import pandas as pd
+from grannymail.utils import get_message_spreadsheet, get_prompt_from_sheet
 
 
-def test_get_message():
-    msg = get_message('help_welcome_message')
-    assert msg == """Welcome to GrannyMail
+def test_get_message_spreadsheet():
+    df = get_message_spreadsheet()
+    assert isinstance(df, pd.DataFrame)
+    assert all([x in df.columns for x in [
+               "full_message_name", "Description", "version_main"]])
 
-📣 → 🤖 → 💌 → 📬 → 👵🏻 → 🥰
 
-Send me a voice message and I will turn it into a letter that you can send to your Grandma, Grandpa or anyone else!
-
-Already have an account and added your telegram ID?
-Start by sending me a voicememo. 🗣️
-
-No account yet?
-Set one up and learn more at www.grannymail.io 🤳🏻
-"""
+def test_get_prompt_from_sheet():
+    prompt = get_prompt_from_sheet("help-success")
+    assert isinstance(prompt, str)
+    assert len(prompt) > 10

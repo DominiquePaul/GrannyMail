@@ -2,6 +2,7 @@ import grannymail.config as cfg
 from dataclasses import dataclass, asdict, field
 from supabase import create_client, Client
 from datetime import datetime
+from grannymail.utils import get_message_spreadsheet
 
 
 class NoEntryFoundError(Exception):
@@ -122,8 +123,8 @@ class Draft(AbstractDataTableClass):
     created_at: str | None = None
     text: str | None = None
     blob_path: str | None = None
-    builds_on: str | None = None
     address_id: str | None = None
+    builds_on: str | None = None
 
 
 @dataclass
@@ -457,8 +458,12 @@ class SupabaseClient:
         draft_list: list[Draft] = [Draft(**draft) for draft in data]
         return draft_list
 
-    def get_last_draft(self, user: User) -> Draft:
-        return self.get_user_drafts(user)[-1]
+    def get_last_draft(self, user: User) -> Draft | None:
+        drafts = self.get_user_drafts(user)
+        if len(drafts) == 0:
+            return None
+        else:
+            return drafts[-1]
 
     def add_draft(self, draft: Draft) -> tuple[int, str]:
         self.client.table("drafts").insert(draft.to_dict()).execute()
@@ -556,3 +561,45 @@ class SupabaseClient:
             pdf_bytes, draft.user_id, mime_type=mime_type)
         draft.blob_path = bucket_path
         self.add_draft(draft)
+
+    def update_system_messages(self):
+        # easiest way to get all columns when the table is empty is inserting a dummy value
+        self.client.table("system_messages").insert(
+            {"full_message_name": "test"}).execute()
+        column_names = list(self.client.table("system_messages").select(
+            "*").execute().data[0].keys())
+
+        assert "full_message_name" in column_names, "Some change has been made to the database schema. The column 'full_message_name' is missing"
+
+        # delete all values in table "system_messages"
+        self.client.table("system_messages").delete().neq(
+            "full_message_name", "").execute()
+
+        # get data from google spreadhsheet and filter out columns that are not in the spreadsheet
+        system_message_df = get_message_spreadsheet()
+        system_message_df = system_message_df[[
+            col for col in column_names if col in system_message_df.columns]]
+
+        insert_values = system_message_df.to_dict(orient="records")
+        # Turn all emojis into a unicode escape representation
+        # for my_dict in insert_values:
+        #     for key, value in my_dict.items():
+        #         if key != "full_message_name":
+        #             # Check if the value is a string before applying encode
+        #             if isinstance(value, str):
+        #                 # we need to encode and decode to get rid of the "b" prefix.
+        #                 my_dict[key] = value.encode("unicode_escape").decode()
+
+        # insert all values from system_message_df into table "system_messages"
+        self.client.table("system_messages").insert(insert_values).execute()
+
+    def get_system_message(self, msg_name: str, col_name: str = cfg.MESSAGES_SHEET_NAME) -> str:
+        response = self.client.table("system_messages").select(
+            "*").eq("full_message_name", msg_name).execute()
+        if response.data == []:
+            raise NoEntryFoundError(col_name, msg_name)
+        elif len(response.data) > 1:
+            raise ValueError(
+                f"More than one message found with {col_name} = {msg_name}")
+        # encode and decode to make sure that all emojis work
+        return response.data[0][col_name]#.encode("utf-8").decode('unicode_escape')

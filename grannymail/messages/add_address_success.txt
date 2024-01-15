@@ -1,3 +1,0 @@
-I’ve successfully added your address to your address book 🫡
-
-You can view all of your addresses with /show_address_book or send your last draft to the address using /send

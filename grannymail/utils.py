@@ -1,5 +1,6 @@
 import typing as t
 import pickle
+import pandas as pd
 
 
 def save_pickle(obj: t.Any, file_loc: str) -> None:
@@ -27,17 +28,17 @@ def load_pickle(file_loc: str) -> t.Any:
         return obj
 
 
-def get_message(msg_name: str) -> str:
-    """Get a message from the messages database
+# def get_message(msg_name: str) -> str:
+#     """Get a message from the messages database
 
-    Args:
-        msg_name (str): The name of the message to retrieve
+#     Args:
+#         msg_name (str): The name of the message to retrieve
 
-    Returns:
-        str: The message
-    """
-    path = f"grannymail/messages/{msg_name}.txt"
-    return read_txt_file(path)
+#     Returns:
+#         str: The message
+#     """
+#     path = f"grannymail/messages/{msg_name}.txt"
+#     return read_txt_file(path)
 
 
 def read_txt_file(path) -> str:
@@ -52,3 +53,24 @@ def read_txt_file(path) -> str:
     with open(path, "r") as f:
         text = f.read()
     return text
+
+
+def get_message_spreadsheet() -> pd.DataFrame:
+    # these are ok to be public.
+    spreadsheet_key = '1FnY5mVvY48nvtMz8mi9rUq7gKLyJ-TpYc-ANAOwdu-0'
+    sheet_name = 'messages'
+
+    # Construct the URL to retrieve data from Google Sheets
+    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_key}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+
+    # Read the Google Spreadsheet into a Pandas DataFrame
+    return pd.read_csv(url)
+
+
+def get_prompt_from_sheet(prompt_name: str, version: str = "version_main") -> str:
+    df = get_message_spreadsheet()
+    return df[df["full_message_name"] == prompt_name][version].iloc[0]
+
+# def get_messages_as_dict(column_name="version_main"):
+#     df = get_message_spreadsheet()
+#     return df.set_index('full_message_name')[column_name].to_dict()

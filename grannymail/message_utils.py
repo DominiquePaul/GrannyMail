@@ -4,7 +4,7 @@ from openai import OpenAI
 from rapidfuzz import fuzz
 
 from grannymail.db_client import Address, User, SupabaseClient
-from grannymail.utils import get_message, read_txt_file
+from grannymail.utils import read_txt_file
 
 openai_client = OpenAI()
 db_client = SupabaseClient()
@@ -28,14 +28,14 @@ def is_message_empty(msg: str, remove_txt: str = "") -> bool:
 def error_in_address(msg: str) -> str | None:
     # Strip to remove leading/trailing whitespace
     msg_lines = msg.strip().split("\n")
-    # Is the message empty?
-    if is_message_empty(msg):
-        return get_message("add_addresss_msg_empty")
     if len(msg_lines) < 5:
-        return get_message("add_address_msg_too_short")
+        response = db_client.get_system_message("add_address-error-too_short")
+        return response
     elif len(msg_lines) > 6:
-        return get_message("add_address_msg_too_long")
+        response = db_client.get_system_message("add_address-error-too_long")
+        return response
     return None  # Explicitly return None for clarity
+
 
 def strip_command(msg: str, command: str) -> str:
     """Strips a command from a message
@@ -48,6 +48,7 @@ def strip_command(msg: str, command: str) -> str:
         str: The message with the command stripped
     """
     return msg.replace(command, "").strip()
+
 
 def parse_new_address(msg: str) -> Address:
     """
@@ -167,6 +168,30 @@ def transcript_to_letter_text(transcript: str, user: User) -> str:
         messages=[
             {"role": "system", "content": system_msg},
             {"role": "user", "content": final_prompt}
+        ]
+    )
+    return completion.choices[0].message.content  # type: ignore
+
+
+def implement_letter_edits(old_content: str, edit_instructions: str, edit_prompt: str) -> str:
+    """Implements the edits requested by the user
+
+    Args:
+        old_transcript (str): The lett
+        edit_instructions (str): The edit instructions
+        edit_prompt (str): The edit prompt
+
+    Returns:
+        str: The new transcript
+    """
+    system_message = db_client.get_system_message("edit-prompt-system_message")
+    full_prompt = edit_prompt.format(old_content, edit_instructions)
+    # feed into gpt:
+    completion = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": full_prompt},
         ]
     )
     return completion.choices[0].message.content

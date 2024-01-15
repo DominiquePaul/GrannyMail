@@ -1,6 +1,7 @@
 import pytest
 from dataclasses import asdict
 from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address
+from grannymail.utils import get_message_spreadsheet
 
 
 class TestUser():
@@ -79,3 +80,30 @@ def test_delete_obj(dbclient):
         dbclient._delete_entry(user)
 
     assert dbclient._delete_entry(user_full) == 1
+
+
+def test_update_system_messages(dbclient):
+    dbclient.update_system_messages()
+    results = dbclient.client.table(
+        "system_messages").select("*").execute().data
+    assert results != []
+    # test that the total number of messages is greater than a certain amount
+    assert len(results) > 25
+    assert "full_message_name" in results[0].keys()
+    assert "version_main" in results[0].keys()
+
+
+def test_get_system_messages_contains_emoji(dbclient):
+    command_name = "send-option-cancel_sending"
+    res = dbclient.get_system_message(command_name)
+    msgs_spredsheet = get_message_spreadsheet()
+    expected = msgs_spredsheet.loc[msgs_spredsheet["full_message_name"]
+                                   == command_name, "version_main"].values[0]
+    assert res == expected
+
+
+def test_get_system_message(dbclient):
+    # test that certain messages are in he DB
+    res = dbclient.get_system_message("help-success")
+    assert isinstance(res, str)
+    assert len(res) > 10
