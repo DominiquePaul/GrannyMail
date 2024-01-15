@@ -69,7 +69,13 @@ def get_message_spreadsheet() -> pd.DataFrame:
 
 def get_prompt_from_sheet(prompt_name: str, version: str = "version_main") -> str:
     df = get_message_spreadsheet()
-    return df[df["full_message_name"] == prompt_name][version].iloc[0]
+    df_subset = df[df["full_message_name"] == prompt_name][version]
+    if df_subset.shape[0] == 0:
+        raise ValueError(f"Could not find prompt {prompt_name} in spreadsheet")
+    elif df_subset.shape[0] > 1:
+        raise ValueError(
+            f"Found multiple prompts with name {prompt_name} in spreadsheet")
+    return df_subset.iloc[0]
 
 # def get_messages_as_dict(column_name="version_main"):
 #     df = get_message_spreadsheet()

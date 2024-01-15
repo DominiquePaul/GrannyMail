@@ -1,5 +1,5 @@
 import time
-from grannymail.message_utils import transcribe_voice_memo, is_message_empty, transcript_to_letter_text, implement_letter_edits
+from grannymail.message_utils import transcribe_voice_memo, transcript_to_letter_text, implement_letter_edits
 from grannymail.utils import read_txt_file, get_prompt_from_sheet
 
 
@@ -12,16 +12,16 @@ def test_transcribe_voice_memo():
     assert len(transcribed_text) > 10
 
 
-def test_is_message_empty():
-    example = "/delete_address 1)"
-    assert is_message_empty(example) == False
+# def test_is_message_empty():
+#     example = "/delete_address 1)"
+#     assert is_message_empty(example) == False
 
-    example = "/delete_address"
-    assert is_message_empty(example) == False
-    assert is_message_empty(example, remove_txt="/delete_address") == True
+#     example = "/delete_address"
+#     assert is_message_empty(example) == False
+#     assert is_message_empty(example, remove_txt="/delete_address") == True
 
-    example = "/delete_address   "
-    assert is_message_empty(example, remove_txt="/delete_address") == True
+#     example = "/delete_address   "
+#     assert is_message_empty(example, remove_txt="/delete_address") == True
 
 
 def test_transcript_to_letter_text(user):

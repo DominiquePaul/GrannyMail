@@ -51,6 +51,12 @@ class AbstractDataTableClass:
                 differing_fields.append(field_name)
         return differing_fields
 
+    def copy(self):
+        # Use the __dict__ attribute to get all attributes and their values
+        new_instance = type(self).__new__(type(self))
+        new_instance.__dict__ = self.__dict__.copy()
+        return new_instance
+
 
 @dataclass
 class User(AbstractDataTableClass):
@@ -70,14 +76,15 @@ class User(AbstractDataTableClass):
 class Message(AbstractDataTableClass):
     _unique_fields: list[str] = field(
         default_factory=lambda: ["message_id"], kw_only=True)
-    user_id: str
-    sent_by: str
+    user_id: str | None = None
+    sent_by: str | None = None
     message_id: str | None = None
     timestamp: str | None = None
     message: str | None = None
     memo_duration: float | None = None
     transcript: str | None = None
     mime_type: str | None = None
+    command: str | None = None
 
 
 @dataclass
@@ -401,6 +408,17 @@ class SupabaseClient:
 
         return Message(**r.data[0])
 
+    def update_message(self, msg_data: Message, msg_update: Message) -> tuple[int, str]:
+        """Updates a message in the database
+
+        Args:
+            msg_data (Message): The message data to update. The message data must contain the message_id
+        """
+        msg_data_full = self.get_message(msg_data)
+        self.client.table("messages").update(msg_update.to_dict()).eq(
+            "message_id", msg_data_full.message_id).execute()
+        return 0, "Message updated successfully"
+
     def get_file(self, data: File) -> File:
         """Completes User information by retrieving full record from the database
 
@@ -531,7 +549,7 @@ class SupabaseClient:
                     mime_type=mime_type, blob_path=bucket_path)
         self.add_file(file)
 
-    def register_message(self, user: User, sent_by: str, mime_type: str, msg_text: str | None, transcript: str | None) -> Message:
+    def register_message(self, user: User, sent_by: str, mime_type: str, msg_text: str | None, command: str | None, transcript: str | None) -> Message:
         """Registers a message in the database
 
         Args:
@@ -550,7 +568,8 @@ class SupabaseClient:
                           sent_by=sent_by,
                           message=msg_text,
                           mime_type=mime_type,
-                          transcript=transcript)
+                          transcript=transcript,
+                          command=command)
         return self.add_message(message)
 
     def get_draft(self, draft: Draft):

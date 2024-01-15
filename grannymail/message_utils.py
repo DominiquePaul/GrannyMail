@@ -10,19 +10,19 @@ openai_client = OpenAI()
 db_client = SupabaseClient()
 
 
-def is_message_empty(msg: str, remove_txt: str = "") -> bool:
-    """Checks if a message is empty
+# def is_message_empty(msg: str, remove_txt: str = "") -> bool:
+#     """Checks if a message is empty
 
-    Args:
-        msg (str): The message to check
-        remove_txt (str): text known to be in the command that you want to remove
+#     Args:
+#         msg (str): The message to check
+#         remove_txt (str): text known to be in the command that you want to remove
 
-    Returns:
-        bool: True if the message is empty, False otherwise
-    """
-    stripped_text = msg.replace(remove_txt, "").strip()
-    is_empty = len(stripped_text) == 0
-    return is_empty
+#     Returns:
+#         bool: True if the message is empty, False otherwise
+#     """
+#     stripped_text = msg.replace(remove_txt, "").strip()
+#     is_empty = len(stripped_text) == 0
+#     return is_empty
 
 
 def error_in_address(msg: str) -> str | None:
@@ -61,7 +61,7 @@ def parse_new_address(msg: str) -> Address:
     Returns:
         Address: The parsed address
     """
-    msg_lines = msg.strip("/add_address").strip().split("\n")
+    msg_lines = msg.replace("/add_address", "").strip().split("\n")
     if len(msg_lines) == 5:
         # No address line 2
         return Address(
@@ -195,3 +195,28 @@ def implement_letter_edits(old_content: str, edit_instructions: str, edit_prompt
         ]
     )
     return completion.choices[0].message.content
+
+
+def format_address_for_confirmation(address: Address) -> str:
+    """Formats an address in a way that every item is clearly understood and can be confirmed by the user
+
+    Args:
+        address (Address): the address object to be formatted
+
+    Returns:
+        str: serialised address
+    """
+
+    def format_single_message(address: Address) -> str:
+        formatted_message = f"Addressee: {address.addressee}\n" +\
+            f"Address line 1: {address.address_line1}\n"
+
+        if address.address_line2:
+            formatted_message += f"Address line 2: {address.address_line2}\n"
+
+        formatted_message += f"Postal Code: {address.zip} \nCity/Town: {address.city}\n" +\
+            f"Country: {address.country}"
+
+        return formatted_message
+
+    return format_single_message(address)

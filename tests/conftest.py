@@ -1,5 +1,6 @@
 import pytest
 from grannymail.db_client import SupabaseClient, User, Draft
+from grannymail.message_utils import parse_new_address
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
@@ -10,7 +11,6 @@ def dbclient():
     client = SupabaseClient()  # Replace with the actual instantiation of your client class
     # You can perform additional setup if needed
     yield client  # This is where the fixture provides the client object to the test
-    # Optionally, perform teardown or cleanup after the test is done
 
 
 @pytest.fixture
@@ -28,7 +28,26 @@ def user(dbclient):
 
 @pytest.fixture
 def draft(dbclient, user):
-    draft = Draft(user_id=user.user_id, text="test_content")
+    draft = Draft(user_id=user.user_id, text="Hallo Doris, mir geht es gut!")
     draft = dbclient.add_draft(draft)
     yield draft
-    dbclient._delete_entry(draft)
+    # no need to delete, deletion is cascading
+
+
+@pytest.fixture
+def address(dbclient, user, address_string_correct):
+    address = parse_new_address(address_string_correct)
+    address.user_id = user.user_id
+    address = dbclient.add_address(address)
+    yield address
+    # no reason to delete since user will be deleted and this cascades into address
+
+
+@pytest.fixture
+def address_string_correct():
+    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City\nMock Country"
+
+
+@pytest.fixture
+def address_string_too_short():
+    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City"
