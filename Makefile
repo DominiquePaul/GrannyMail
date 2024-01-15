@@ -17,3 +17,5 @@ db_status:
 db_sync:
 	echo "This will take 75-120 seconds..."
 	cd database_config && snaplet snapshot create && sleep 60 && snaplet snapshot restore --no-reset --latest -y && cd ..
+db_messages:
+	python scripts/update_system_messages.py

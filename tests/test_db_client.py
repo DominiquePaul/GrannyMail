@@ -1,6 +1,6 @@
 import pytest
 from dataclasses import asdict
-from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address
+from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address, Draft
 from grannymail.utils import get_message_spreadsheet
 
 
@@ -107,3 +107,10 @@ def test_get_system_message(dbclient):
     res = dbclient.get_system_message("help-success")
     assert isinstance(res, str)
     assert len(res) > 10
+
+
+def test_get_last_draft(dbclient, user, draft):
+    # test that certain messages are in the DB
+    res = dbclient.get_last_draft(user)
+    assert isinstance(res, Draft)
+    assert res.text == draft.text

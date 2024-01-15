@@ -311,6 +311,8 @@ async def handle_edit_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         chat_id, msg_user, user = values_returned
     else:
         return
+    confirmation_msg = db_client.get_system_message("edit-confirm")
+    await context.bot.send_message(chat_id=chat_id, text=confirmation_msg)
     old_draft: Draft = db_client.get_last_draft(user)  # type: ignore
     old_content: str = old_draft.text  # type: ignore
     prompt = db_client.get_system_message("edit-prompt-implement_changes")

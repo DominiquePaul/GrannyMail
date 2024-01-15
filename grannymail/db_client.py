@@ -9,8 +9,8 @@ class NoEntryFoundError(Exception):
     """An error raised when no entry was found for retrieval or deletion and it might go unnoticed if not raised. Deletion is probably the best example.
     """
 
-    def __init__(self, key: str, data: str | float | int) -> None:
-        self.message = f"No entry found in the database for searching for {key} = {data}"
+    def __init__(self, table: str, key: str, data: str | float | int) -> None:
+        self.message = f"No entry found in table {table} for searching for {key} = {data}"
         super().__init__(self.message)
 
 
@@ -220,13 +220,27 @@ class SupabaseClient:
         if duplicated_values:
             raise DuplicateEntryError(duplicated_values)
 
-    def _validate_supabase_respones(self, response: list, field_name: str, field_value: str | float | int) -> None:
+    def _validate_exactly_one_supabase_item(self, response: list, table: str, field_name: str, field_value: str | float | int) -> None:
+        """Checks that the response from Supabase is valid.
+
+        This means that a single entry was found with the given field_name and field_value
+
+        Args:
+            response (list): _description_
+            field_name (str): _description_
+            field_value (str | float | int): _description_
+
+        Raises:
+            ValueError: If the response is not a list. For example if there is an error in the query
+            NoEntryFoundError: No entry found in the database for searching for {key} = {data}
+            ValueError: Multiple entries found with {key} = {data}
+        """
         if not isinstance(response, list):
             raise ValueError(
                 f"Response from Supabase was not a list. Instead got {type(response)}")
         if len(response) != 1:
             if len(response) == 0:
-                raise NoEntryFoundError(field_name, field_value)
+                raise NoEntryFoundError(table, field_name, field_value)
             else:
                 raise ValueError(
                     f"More than one user found with {field_name} {field_value}")
@@ -245,8 +259,8 @@ class SupabaseClient:
             unique_field = unique_fields[0]
             response = self.client.table(table).select(
                 "*").eq(unique_field, getattr(obj, unique_field)).execute().data
-            self._validate_supabase_respones(
-                response, unique_field, getattr(obj, unique_field))
+            self._validate_exactly_one_supabase_item(
+                response, table, unique_field, getattr(obj, unique_field))
             return response[0]
 
     def _delete_entry(self, obj: AbstractDataTableClass, deletion_key: str | None = None) -> int:
@@ -274,7 +288,8 @@ class SupabaseClient:
             deletion_key, getattr(obj, deletion_key)).execute()
         items_deleted = len(response.data)
         if items_deleted == 0:
-            raise NoEntryFoundError(deletion_key, getattr(obj, deletion_key))
+            raise NoEntryFoundError(
+                table, deletion_key, getattr(obj, deletion_key))
         else:
             return items_deleted
 
@@ -399,14 +414,15 @@ class SupabaseClient:
         """
         return File(**self._get_obj_info("files", data))
 
-    def add_file(self, file: File):
+    def add_file(self, file: File) -> File:
         duplicates = self._check_duplicates("files", file)
         if duplicates:
-            return 1, f"A existing file was already found with {', '.join(duplicates)}"
-        else:
-            self.client.table("files").insert(
-                file.to_dict()).execute()
-        return 0, "File added successfully"
+            raise DuplicateEntryError()
+        response = self.client.table("files").insert(
+            file.to_dict()).execute()
+        assert len(response.data) == 1
+        file_data = response.data[0]
+        return File(**file_data)
 
     def get_user_addresses(self, user: User) -> list[Address]:
         user = self.get_user(user)
@@ -454,7 +470,6 @@ class SupabaseClient:
             .execute()
         )
         data = response.data
-        self._validate_supabase_respones(data, "user_id", user.user_id)
         draft_list: list[Draft] = [Draft(**draft) for draft in data]
         return draft_list
 
@@ -465,13 +480,19 @@ class SupabaseClient:
         else:
             return drafts[-1]
 
-    def add_draft(self, draft: Draft) -> tuple[int, str]:
-        self.client.table("drafts").insert(draft.to_dict()).execute()
-        return 0, "Draft added successfully"
+    def add_draft(self, draft: Draft) -> Draft:
+        response = self.client.table("drafts").insert(
+            draft.to_dict()).execute()
+        assert len(response.data) == 1
+        draft_data = response.data[0]
+        return Draft(**draft_data)
 
-    def add_attachment(self, attachment: Attachment) -> tuple[int, str]:
-        self.client.table("attachments").insert(attachment.to_dict()).execute()
-        return 0, "Draft added successfully"
+    def add_attachment(self, attachment: Attachment) -> Attachment:
+        response = self.client.table("attachments").insert(
+            attachment.to_dict()).execute()
+        assert len(response.data) == 1
+        attachment_data = response.data[0]
+        return Attachment(**attachment_data)
 
     # ---------------
 
@@ -597,9 +618,10 @@ class SupabaseClient:
         response = self.client.table("system_messages").select(
             "*").eq("full_message_name", msg_name).execute()
         if response.data == []:
-            raise NoEntryFoundError(col_name, msg_name)
+            raise NoEntryFoundError("system_messages", col_name, msg_name)
         elif len(response.data) > 1:
             raise ValueError(
                 f"More than one message found with {col_name} = {msg_name}")
         # encode and decode to make sure that all emojis work
-        return response.data[0][col_name]#.encode("utf-8").decode('unicode_escape')
+        # .encode("utf-8").decode('unicode_escape')
+        return response.data[0][col_name]

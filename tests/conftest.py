@@ -1,5 +1,5 @@
 import pytest
-from grannymail.db_client import SupabaseClient, User
+from grannymail.db_client import SupabaseClient, User, Draft
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
@@ -23,4 +23,12 @@ def user(dbclient):
     # You can perform additional setup if needed
     yield user  # This is where the fixture provides the client object to the test
     # Optionally, perform teardown or cleanup after the test is done
-    dbclient.delete_user(User(email="mike@mockowitz.com"))
+    dbclient.delete_user(user)
+
+
+@pytest.fixture
+def draft(dbclient, user):
+    draft = Draft(user_id=user.user_id, text="test_content")
+    draft = dbclient.add_draft(draft)
+    yield draft
+    dbclient._delete_entry(draft)
