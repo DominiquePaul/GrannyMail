@@ -85,6 +85,7 @@ class Message(AbstractDataTableClass):
     transcript: str | None = None
     mime_type: str | None = None
     command: str | None = None
+    draft_referenced: str | None = None
 
 
 @dataclass
@@ -458,12 +459,14 @@ class SupabaseClient:
             Address(**address) for address in response]
         return address_list
 
-    def add_address(self, address: Address) -> tuple[int, str]:
+    def add_address(self, address: Address) -> Address:
         if address.user_id is None:
             raise ValueError(
                 "Address does not have a user_id. Cannot add address")
-        self.client.table("addresses").insert(address.to_dict()).execute()
-        return 0, "Address added successfully"
+        response = self.client.table("addresses").insert(
+            address.to_dict()).execute()
+        full_address = Address(**response.data[0])
+        return full_address
 
     def delete_address(self, address: Address) -> tuple[int, str]:
         if address.address_id is None:
@@ -572,8 +575,8 @@ class SupabaseClient:
                           command=command)
         return self.add_message(message)
 
-    def get_draft(self, draft: Draft):
-        self._get_obj_info("drafts", draft)
+    def get_draft(self, draft: Draft) -> Draft:
+        return Draft(**self._get_obj_info("drafts", draft))
 
     def add_order(self, order: Order):
         for field in ["user_id", "draft_id", "address_id", "blob_path"]:
@@ -584,13 +587,13 @@ class SupabaseClient:
         if duplicates:
             return 1, f"A existing user was already found with {', '.join(duplicates)}"
         else:
-            r = self.client.table("users").insert(order.to_dict()).execute()
+            r = self.client.table("orders").insert(order.to_dict()).execute()
             return 0, "Order added successfully"
 
     def get_order(self, order: Order):
         self._get_obj_info("orders", order)
 
-    def register_draft(self, draft: Draft, pdf_bytes: bytes):
+    def register_draft(self, draft: Draft, pdf_bytes: bytes) -> Draft:
         if draft.user_id is None:
             raise ValueError(
                 "Draft does not have a user_id. Cannot register draft")
@@ -600,7 +603,7 @@ class SupabaseClient:
         bucket_path = self.upload_file(
             pdf_bytes, draft.user_id, mime_type=mime_type)
         draft.blob_path = bucket_path
-        self.add_draft(draft)
+        return self.add_draft(draft)
 
     def update_system_messages(self):
         # easiest way to get all columns when the table is empty is inserting a dummy value
@@ -644,3 +647,28 @@ class SupabaseClient:
         # encode and decode to make sure that all emojis work
         # .encode("utf-8").decode('unicode_escape')
         return response.data[0][col_name]
+
+    def get_last_user_message(self, user: User) -> Message:
+        """Returns the last message sent by the user
+
+        Args:
+            user (User): The user to search for
+
+        Returns:
+            Message: The last message sent by the user
+        """
+        user = self.get_user(user)
+        response = (
+            self.client.table("messages")
+            .select("*")
+            .eq("user_id", user.user_id)
+            .order("timestamp", desc=True)
+            .execute()
+        )
+        data = response.data
+        if len(data) == 0:
+            assert user.user_id is not None
+            raise NoEntryFoundError(
+                "messages", "user_id", str(user.user_id))
+        else:
+            return Message(**data[0])

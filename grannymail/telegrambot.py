@@ -407,11 +407,21 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Creating pdf")
     draft_bytes = create_letter_pdf_as_bytes(
         draft.text, address)  # type: ignore
-    db_client.register_draft(
-        Draft(user_id=user.user_id, builds_on=draft.draft_id, text=draft.text, address_id=address.address_id), draft_bytes)
+    draft = db_client.register_draft(
+        Draft(user_id=user.user_id,
+              builds_on=draft.draft_id,
+              text=draft.text,
+              address_id=address.address_id),
+        draft_bytes)
 
+    # update the message with the draft id so we can retrieve it in the callback without ambuiguity
+    message_updated = message.copy()
+    message_updated.draft_referenced = draft.draft_id
+    db_client.update_message(message, message_updated)
+
+    address_formatted = msg_utils.format_address_simple(address)
     msg = db_client.get_system_message(
-        "send-success").format(user.first_name) + user_warning
+        "send-success").format(user.first_name, address_formatted) + user_warning
     option_confirm = db_client.get_system_message(
         "send-option-confirm_sending")
     option_cancel = db_client.get_system_message("send-option-cancel_sending")
@@ -461,12 +471,12 @@ async def callback_add_address(update: Update, context: ContextTypes.DEFAULT_TYP
 async def callback_send_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE, message: Message) -> None:
     """Parses the CallbackQuery and updates the message text."""
     query: CallbackQuery = update.callback_query  # type: ignore
-    telegram_id: str = update.message.from_user["username"]  # type: ignore
+    user = db_client.get_user(User(user_id=message.user_id))
     # Send out letter
-    draft_id: str = query.data["draft_id"]  # type: ignore
+    draft_id: str = message.draft_referenced  # type: ignore
     user_confirmed: bool = json.loads(query.data)["conf"]  # type: ignore
     logging.info(
-        f"Final Sending Callback from TID: {telegram_id} with response: {user_confirmed}")
+        f"Final Sending Callback from TID: {user.telegram_id} with response: {user_confirmed}")
     if user_confirmed:
 
         # Fetch the referenced draft
@@ -514,7 +524,7 @@ ptb.add_handler(CommandHandler("add_address", handle_add_address))
 ptb.add_handler(CommandHandler("show_address_book", handle_show_address_book))
 ptb.add_handler(CommandHandler("delete_address", handle_delete_address))
 ptb.add_handler(CommandHandler("edit_prompt", handle_edit_prompt))
-ptb.add_handler(CommandHandler("edit_draft", handle_edit_draft))
+ptb.add_handler(CommandHandler("edit", handle_edit_draft))
 ptb.add_handler(CommandHandler("send", handle_send))
 ptb.add_handler(MessageHandler(filters.VOICE, handle_voice))
 ptb.add_handler(CallbackQueryHandler(callback_handler))

@@ -194,7 +194,21 @@ def implement_letter_edits(old_content: str, edit_instructions: str, edit_prompt
             {"role": "user", "content": full_prompt},
         ]
     )
-    return completion.choices[0].message.content
+    out: str = completion.choices[0].message.content  # type: ignore
+    return out
+
+
+def format_address_simple(address: Address) -> str:
+    formatted_message = f"{address.addressee}\n" +\
+        f"{address.address_line1}\n"
+
+    if address.address_line2:
+        formatted_message += f"{address.address_line2}\n"
+
+    formatted_message += f"{address.zip} {address.city}\n" +\
+        f"{address.country}"
+
+    return formatted_message
 
 
 def format_address_for_confirmation(address: Address) -> str:
@@ -206,17 +220,13 @@ def format_address_for_confirmation(address: Address) -> str:
     Returns:
         str: serialised address
     """
+    formatted_message = f"Addressee: {address.addressee}\n" +\
+        f"Address line 1: {address.address_line1}\n"
 
-    def format_single_message(address: Address) -> str:
-        formatted_message = f"Addressee: {address.addressee}\n" +\
-            f"Address line 1: {address.address_line1}\n"
+    if address.address_line2:
+        formatted_message += f"Address line 2: {address.address_line2}\n"
 
-        if address.address_line2:
-            formatted_message += f"Address line 2: {address.address_line2}\n"
+    formatted_message += f"Postal Code: {address.zip} \nCity/Town: {address.city}\n" +\
+        f"Country: {address.country}"
 
-        formatted_message += f"Postal Code: {address.zip} \nCity/Town: {address.city}\n" +\
-            f"Country: {address.country}"
-
-        return formatted_message
-
-    return format_single_message(address)
+    return formatted_message

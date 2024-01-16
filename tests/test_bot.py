@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, ANY, call
 import grannymail.telegrambot as gm
 from grannymail.db_client import User, Draft, NoEntryFoundError
 from grannymail.utils import get_prompt_from_sheet
-from grannymail.message_utils import parse_new_address, format_address_for_confirmation
+from grannymail.message_utils import format_address_simple
 
 
 @pytest.fixture
@@ -187,7 +187,7 @@ async def test_handle_send_fails_no_previous_draft(mock_update, mock_context, us
 
 
 @pytest.mark.asyncio
-async def test_handle_send_success(mock_update, mock_context, user, address, draft):
+async def test_handle_send_success(mock_update, mock_context, dbclient, user, address, draft):
     # prepare mock objects
     mock_update.message.text = "/send mama mockowitz"
 
@@ -195,10 +195,18 @@ async def test_handle_send_success(mock_update, mock_context, user, address, dra
     await gm.handle_send(mock_update, mock_context)
 
     # test that the response contains a markup keyboard
-    expected = get_prompt_from_sheet("send-success").format(user.first_name)
+    address_formatted = format_address_simple(address)
+    expected = get_prompt_from_sheet(
+        "send-success").format(user.first_name, address_formatted)
     mock_context.bot.send_message.assert_awaited_once_with(chat_id=1234,
                                                            reply_markup=ANY,
                                                            text=expected)
     # assert mock_context.bot.send_message.await_args_list[0].kwargs["text"] == expected
     mock_context.bot.send_document.assert_awaited_once_with(
         chat_id=1234, document=ANY, filename="final_letter.pdf")
+
+    # make sure that the message is updated and contains a draft referenced
+    msg = dbclient.get_last_user_message(user)
+    last_draft = dbclient.get_last_draft(user)
+    assert isinstance(msg.draft_referenced, str)
+    assert msg.draft_referenced == last_draft.draft_id

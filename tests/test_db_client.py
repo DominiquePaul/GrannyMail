@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import asdict
-from grannymail.db_client import SupabaseClient, User, NoEntryFoundError, Address, Draft
-from grannymail.utils import get_message_spreadsheet
+from grannymail.db_client import User, NoEntryFoundError, Address, Draft
+from grannymail.utils import get_prompt_from_sheet
 
 
 class TestUser():
@@ -56,8 +56,11 @@ def test_add_adress(dbclient, user):
         zip="test_postal_code",
         country="test_country"
     )
-    r, _ = dbclient.add_address(address)
-    assert r == 0
+    resp = dbclient.add_address(address)
+    assert isinstance(resp, Address)
+    assert resp.user_id == user.user_id
+    assert resp.addressee == "test_recipient"
+    assert resp.address_line1 == "test_address_line1"
 
     address_retrieved = dbclient.get_user_addresses(user)
     assert isinstance(address_retrieved, list)
@@ -96,9 +99,7 @@ def test_update_system_messages(dbclient):
 def test_get_system_messages_contains_emoji(dbclient):
     command_name = "send-option-cancel_sending"
     res = dbclient.get_system_message(command_name)
-    msgs_spredsheet = get_message_spreadsheet()
-    expected = msgs_spredsheet.loc[msgs_spredsheet["full_message_name"]
-                                   == command_name, "version_main"].values[0]
+    expected = get_prompt_from_sheet(command_name)
     assert res == expected
 
 

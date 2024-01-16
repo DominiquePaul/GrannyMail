@@ -1,6 +1,7 @@
 import typing as t
 import pickle
 import pandas as pd
+import grannymail.config as cfg
 
 
 def save_pickle(obj: t.Any, file_loc: str) -> None:
@@ -67,7 +68,7 @@ def get_message_spreadsheet() -> pd.DataFrame:
     return pd.read_csv(url)
 
 
-def get_prompt_from_sheet(prompt_name: str, version: str = "version_main") -> str:
+def get_prompt_from_sheet(prompt_name: str, version: str = cfg.MESSAGES_SHEET_NAME) -> str:
     df = get_message_spreadsheet()
     df_subset = df[df["full_message_name"] == prompt_name][version]
     if df_subset.shape[0] == 0:
