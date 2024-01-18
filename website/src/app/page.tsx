@@ -1,7 +1,4 @@
 import MaxWidthWrapper from "@/components/MaxWidthWrapper"
-import Link from "next/link"
-import { ArrowRight } from "lucide-react"
-import { buttonVariants } from "@/components/ui/button"
 
 
 export default function Home() {
