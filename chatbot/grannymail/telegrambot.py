@@ -1,25 +1,33 @@
-import json
-import sys
-import datetime
-import requests
-import grannymail.config as cfg
-import grannymail.constants as const
-import grannymail.message_utils as msg_utils
-import grannymail.db_client as db
-from grannymail.pdf_gen import create_letter_pdf_as_bytes
-from grannymail.db_client import User, Draft, Order, Address, Message
-import sentry_sdk
-from fastapi import FastAPI, Request, Response
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram._callbackquery import CallbackQuery
-from telegram.ext import MessageHandler, CallbackContext, filters
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
-from telegram.ext import JobQueue
-from telegram.ext._contexttypes import ContextTypes
-from http import HTTPStatus
-from grannymail.pingen import Pingen
-from contextlib import asynccontextmanager
+from .utils.whatsapp_utils import (
+    process_whatsapp_message,
+    is_valid_whatsapp_message,
+)
+from .decorators.security import signature_required
+from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, Response, status, Depends
 import logging
+from contextlib import asynccontextmanager
+from grannymail.pingen import Pingen
+from http import HTTPStatus
+from telegram.ext._contexttypes import ContextTypes
+from telegram.ext import JobQueue
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import MessageHandler, CallbackContext, filters
+from telegram._callbackquery import CallbackQuery
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from fastapi import FastAPI, Request, Response
+import sentry_sdk
+from grannymail.db_client import User, Draft, Order, Address, Message
+from grannymail.pdf_gen import create_letter_pdf_as_bytes
+import grannymail.db_client as db
+import grannymail.utils.message_utils as msg_utils
+import grannymail.constants as const
+import grannymail.config as cfg
+import requests
+import datetime
+import sys
+import json
+
 
 # setup sentry
 if cfg.SENTRY_ENDPOINT:
@@ -61,7 +69,7 @@ job_queue: JobQueue = ptb.job_queue  # type: ignore
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await ptb.bot.setWebhook(cfg.WEBHOOK_URL)
+    await ptb.bot.setWebhook(cfg.TELEGRAM_WEBHOOK_URL)
     async with ptb:
         await ptb.start()
         yield
@@ -71,7 +79,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.post("/")
+@app.post("/telegram")
 async def process_update(request: Request):
     req = await request.json()
     update = Update.de_json(req, ptb.bot)
@@ -126,12 +134,12 @@ async def default_message_handling(update: Update, context: ContextTypes.DEFAULT
         user = db_client.get_user(User(telegram_id=telegram_id))
         registered_user = user
     except db.NoEntryFoundError:
+        registered_user = User(telegram_id=telegram_id,
+                               user_id=const.ANONYMOUS_USER_ID)
         user_error_msg = db_client.get_system_message(
             'system-error-telegram_user_not_found')
         await context.bot.send_message(chat_id=chat_id, text=user_error_msg)
         # register message in the database even if the user is not found
-        registered_user = User(telegram_id=telegram_id,
-                               user_id=const.ANONYMOUS_USER_ID)
         return None
     finally:
         # register the message in either case
@@ -368,7 +376,7 @@ async def handle_voice(update: Update, context: CallbackContext):
 
 
 async def handle_edit_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    values_returned = await default_message_handling(update, context, command="edit", check_last_draft_exists=True)
+    values_returned = await default_message_handling(update, context, command="edit", check_msg_not_empty=True, check_last_draft_exists=True)
     if values_returned:
         chat_id, msg_user, user, _ = values_returned
     else:
@@ -552,3 +560,80 @@ ptb.add_handler(CallbackQueryHandler(callback_handler))
 job_queue.run_once(job_update_system_messages, 0)
 job_queue.run_daily(job_update_system_messages, days=(0, 1, 2, 3, 4, 5, 6),
                     time=datetime.time(hour=6, minute=00, second=00))
+
+
+app = FastAPI()
+
+
+async def handle_message(request: Request):
+    """
+    Handle incoming webhook events from the WhatsApp API.
+    """
+    body = await request.json()
+
+    # Check if it's a WhatsApp status update
+    if (
+        body.get("entry", [{}])[0]
+        .get("changes", [{}])[0]
+        .get("value", {})
+        .get("statuses")
+    ):
+        logging.info("Received a WhatsApp status update.")
+        return JSONResponse(content={"status": "ok"}, status_code=status.HTTP_200_OK)
+
+    try:
+        if is_valid_whatsapp_message(body):
+            process_whatsapp_message(body)
+            return JSONResponse(content={"status": "ok"}, status_code=status.HTTP_200_OK)
+        else:
+            return JSONResponse(
+                content={"status": "error",
+                         "message": "Not a WhatsApp API event"},
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+    except json.JSONDecodeError:
+        logging.error("Failed to decode JSON")
+        return JSONResponse(
+            content={"status": "error", "message": "Invalid JSON provided"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+async def verify(request: Request):
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+
+    if mode and token:
+        if mode == "subscribe" and token == "YOUR_VERIFY_TOKEN":  # Replace with your token
+            logging.info("WEBHOOK_VERIFIED")
+            return Response(content=challenge)
+        else:
+            logging.info("VERIFICATION_FAILED")
+            return JSONResponse(
+                content={"status": "error", "message": "Verification failed"},
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+    else:
+        logging.info("MISSING_PARAMETER")
+        return JSONResponse(
+            content={"status": "error", "message": "Missing parameters"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+@app.get("/webhook")
+async def webhook_get(request: Request):
+    return await verify(request)
+
+
+@app.post("/webhook")
+async def webhook_post(request: Request):
+    return await handle_message(request)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("grannymail.telegrambot:app",
+                host="127.0.0.1", port=8000, reload=True)

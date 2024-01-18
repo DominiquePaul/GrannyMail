@@ -2,7 +2,7 @@ import grannymail.config as cfg
 from dataclasses import dataclass, asdict, field
 from supabase import create_client, Client
 from datetime import datetime
-from grannymail.utils import get_message_spreadsheet
+from grannymail.utils.utils import get_message_spreadsheet
 
 
 class NoEntryFoundError(Exception):

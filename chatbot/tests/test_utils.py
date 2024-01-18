@@ -1,5 +1,5 @@
 import pandas as pd
-from grannymail.utils import get_message_spreadsheet, get_prompt_from_sheet
+from grannymail.utils.utils import get_message_spreadsheet, get_prompt_from_sheet
 
 
 def test_get_message_spreadsheet():

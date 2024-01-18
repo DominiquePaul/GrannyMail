@@ -2,7 +2,7 @@ import os
 from grannymail.pdf_gen import create_letter_pdf_as_bytes, create_and_save_letter
 from grannymail.db_client import Address
 from pytest import fixture
-from grannymail.utils import read_txt_file
+from grannymail.utils.utils import read_txt_file
 
 
 @fixture

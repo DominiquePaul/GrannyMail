@@ -2,8 +2,8 @@ import pytest
 from unittest.mock import AsyncMock, ANY, call
 import grannymail.telegrambot as gm
 from grannymail.db_client import User, Draft, NoEntryFoundError
-from grannymail.utils import get_prompt_from_sheet
-from grannymail.message_utils import format_address_simple
+from grannymail.utils.utils import get_prompt_from_sheet
+from grannymail.utils.message_utils import format_address_simple
 
 
 @pytest.fixture

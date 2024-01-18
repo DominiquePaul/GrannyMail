@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import asdict
 from grannymail.db_client import User, NoEntryFoundError, Address, Draft
-from grannymail.utils import get_prompt_from_sheet
+from grannymail.utils.utils import get_prompt_from_sheet
 
 
 class TestUser():

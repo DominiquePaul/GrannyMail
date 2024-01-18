@@ -5,7 +5,8 @@ setup_repo:
 ngrok:
 	ngrok http http://localhost:8000 --domain=adapted-earwig-duly.ngrok-free.app
 devbot:
-	gunicorn grannymail.telegrambot:app -k uvicorn.workers.UvicornWorker --reload --timeout=0
+	python -m grannymail.telegrambot
+	# gunicorn grannymail.telegrambot:app -k uvicorn.workers.UvicornWorker --reload --timeout=0
 bot:
 	gunicorn telegrambot:app -k uvicorn.workers.UvicornWorker -b :8000 --workers 1 --threads 8 --timeout 0
 db_up:

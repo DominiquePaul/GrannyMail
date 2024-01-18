@@ -4,7 +4,7 @@ from openai import OpenAI
 from rapidfuzz import fuzz
 
 from grannymail.db_client import Address, User, SupabaseClient
-from grannymail.utils import read_txt_file
+from grannymail.utils.utils import read_txt_file
 
 openai_client = OpenAI()
 db_client = SupabaseClient()

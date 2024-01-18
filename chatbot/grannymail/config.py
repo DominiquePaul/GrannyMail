@@ -3,12 +3,19 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 
-# Server setup
-WEBHOOK_URL = os.environ['WEBHOOK_URL']
-
 # Telegram bot
 BOT_TOKEN = os.environ['BOT_TOKEN']
 BOT_USERNAME = os.environ['BOT_USERNAME']
+TELEGRAM_WEBHOOK_URL = os.environ['TELEGRAM_WEBHOOK_URL']
+
+# Whatsapp bot
+WHATSAPP_TOKEN = os.environ['WHATSAPP_TOKEN']
+APP_ID = os.environ['APP_ID']
+APP_SECRET = os.environ['APP_SECRET']
+WHATSAPP_API_VERSION = os.environ['WHATSAPP_API_VERSION']
+PHONE_NUMBER_ID = os.environ['PHONE_NUMBER_ID']
+VERIFY_TOKEN = os.environ['VERIFY_TOKEN']
+
 
 # Supabase
 SUPABASE_URL = os.environ['SUPABASE_URL']

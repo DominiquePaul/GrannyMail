@@ -1,6 +1,6 @@
 import time
-from grannymail.message_utils import transcribe_voice_memo, transcript_to_letter_text, implement_letter_edits
-from grannymail.utils import read_txt_file, get_prompt_from_sheet
+from grannymail.utils.message_utils import transcribe_voice_memo, transcript_to_letter_text, implement_letter_edits
+from grannymail.utils.utils import read_txt_file, get_prompt_from_sheet
 
 
 def test_transcribe_voice_memo():

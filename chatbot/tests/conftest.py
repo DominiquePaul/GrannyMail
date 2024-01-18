@@ -1,6 +1,6 @@
 import pytest
 from grannymail.db_client import SupabaseClient, User, Draft
-from grannymail.message_utils import parse_new_address
+from grannymail.utils.message_utils import parse_new_address
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
