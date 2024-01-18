@@ -97,10 +97,10 @@ def format_address_book(addresses: list[Address]) -> str:
 
         return formatted_message
 
-    out = ""
+    address_list = []
     for idx, add in enumerate(addresses):
-        out += f"\n{idx+1})\n{format_single_message(add)}\n"
-    return out
+        address_list.append(f"\n{idx+1})\n{format_single_message(add)}\n")
+    return "\n".join(address_list)
 
 
 def fetch_closest_address_index(fuzzy_string: str, address_book: list[Address]) -> int:

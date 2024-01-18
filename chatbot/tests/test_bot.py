@@ -49,6 +49,24 @@ async def test_handle_help(mock_update, mock_context, user):
 
 
 @pytest.mark.asyncio
+async def test_handle_report_bug_no_message(mock_update, mock_context, user):
+    mock_update.message.text = "/report_bug"
+    await gm.handle_report_bug(mock_update, mock_context)
+
+    mock_context.bot.send_message.assert_awaited_once_with(
+        chat_id=1234, text=get_prompt_from_sheet("report_bug-error-msg_empty"))
+
+
+@pytest.mark.asyncio
+async def test_handle_report_bug_success(mock_update, mock_context, user):
+    mock_update.message.text = "/report_bug no letter created"
+    await gm.handle_report_bug(mock_update, mock_context)
+
+    mock_context.bot.send_message.assert_awaited_once_with(
+        chat_id=1234, text=get_prompt_from_sheet("report_bug-success"))
+
+
+@pytest.mark.asyncio
 async def test_handle_show_address_book(mock_update, mock_context, user):
     mock_update.message.text = "/show_address_book"
     await gm.handle_show_address_book(mock_update, mock_context)

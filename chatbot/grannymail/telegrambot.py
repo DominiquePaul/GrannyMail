@@ -174,6 +174,14 @@ async def default_message_handling(update: Update, context: ContextTypes.DEFAULT
     return chat_id, msg_txt, user, message
 
 
+async def handle_no_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    values_returned = await default_message_handling(update, context, command="help")
+    if values_returned:
+        chat_id, _, _, _ = values_returned
+    else:
+        return
+
+
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     values_returned = await default_message_handling(update, context, command="help")
     if values_returned:
@@ -181,6 +189,16 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         return
     response_msg = db_client.get_system_message('help-success')
+    await context.bot.send_message(chat_id=chat_id, text=response_msg)
+
+
+async def handle_report_bug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    values_returned = await default_message_handling(update, context, command="report_bug", check_msg_not_empty=True)
+    if values_returned:
+        chat_id, _, _, _ = values_returned
+    else:
+        return
+    response_msg = db_client.get_system_message('report_bug-success')
     await context.bot.send_message(chat_id=chat_id, text=response_msg)
 
 
@@ -430,7 +448,7 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(
                 option_confirm, callback_data=json.dumps({"mid": message.message_id, "conf": True})),
             InlineKeyboardButton(
-                option_cancel, callback_data=json.dumps({"mid": message.message_id, "conf": True})),
+                option_cancel, callback_data=json.dumps({"mid": message.message_id, "conf": False})),
         ],
     ]
     await context.bot.send_document(chat_id=chat_id, document=draft_bytes, filename="final_letter.pdf")
@@ -519,7 +537,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # Register our handlers
+ptb.add_handler(MessageHandler(
+    filters.TEXT & ~filters.COMMAND, handle_no_command))
 ptb.add_handler(CommandHandler("help", handle_help))
+ptb.add_handler(CommandHandler("report_bug", handle_report_bug))
 ptb.add_handler(CommandHandler("add_address", handle_add_address))
 ptb.add_handler(CommandHandler("show_address_book", handle_show_address_book))
 ptb.add_handler(CommandHandler("delete_address", handle_delete_address))
