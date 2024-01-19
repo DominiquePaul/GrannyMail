@@ -9,9 +9,9 @@ BOT_USERNAME = os.environ['BOT_USERNAME']
 TELEGRAM_WEBHOOK_URL = os.environ['TELEGRAM_WEBHOOK_URL']
 
 # Whatsapp bot
-WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN', "")
+WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN')
 APP_ID = os.environ.get('APP_ID')
-APP_SECRET = os.environ['APP_SECRET']
+APP_SECRET = os.environ.get('APP_SECRET')
 WHATSAPP_API_VERSION = os.environ.get('WHATSAPP_API_VERSION')
 PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN')
