@@ -2,16 +2,12 @@
 
 
 <p align="center">
-    <a href="https://pypi.org/project/streamlit-pydantic/" title="PyPi Version"><img src="https://img.shields.io/pypi/v/streamlit-pydantic?color=green&style=flat"></a>
-    <a href="https://pypi.org/project/streamlit-pydantic/" title="Python Version"><img src="https://img.shields.io/badge/Python-3.7%2B-blue&style=flat"></a>
-    <a href="https://github.com/lukasmasuch/streamlit-pydantic/blob/main/LICENSE" title="Project License"><img src="https://img.shields.io/badge/License-MIT-green.svg"></a>
-    <a href="https://twitter.com/lukasmasuch" title="Follow on Twitter"><img src="https://img.shields.io/twitter/follow/lukasmasuch.svg?style=social&label=Follow"></a>
+    <a href="https://github.com/DominiquePaul/GrannyMail" title="Python Version"><img src="https://www.python.org/downloads/release/python-311/"></a>
+    <a href="https://github.com/DominiquePaul/GrannyMail/blob/master/LICENSE" title="Project License"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg"></a>
+    <a href="https://github.com/psf/black" title="Project License"><img src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+    <a href="https://twitter.com/DominiqueCAPaul" title="Follow on Twitter"><img src="https://img.shields.io/twitter/follow/lukasmasuch.svg?style=social&label=Follow"></a>
 </p>
 
-
-[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](https://github.com/tatsu-lab/stanford_alpaca/blob/main/LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/release/python-311/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 # Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
 
