@@ -3,8 +3,10 @@
 
 <p align="center">
     <a href="https://github.com/DominiquePaul/GrannyMail" title="Python Version"><img src="https://img.shields.io/badge/python-3.11+-blue.svg"></a>
-    <a href="https://github.com/DominiquePaul/GrannyMail/blob/master/LICENSE" title="Project License"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg"></a>
+    <a href="https://github.com/DominiquePaul/GrannyMail/blob/master/LICENSE" title="Project License"><img src="https://img.shields.io/badge/License-GPLv3-green.svg"></a>
     <a href="https://github.com/psf/black" title="Project License"><img src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
+    <a href="https://github.com/DominiquePaul/GrannyMail" title="Follow on Twitter"><img src="https://img.shields.io/github/last-commit/:dominiquepaul/:grannymail/:master"></a>
+    <a href="https://github.com/DominiquePaul/GrannyMail" title="Follow on Twitter"><img alt="GitHub repo size" src="https://img.shields.io/github/repo-size/:dominiquepaul/:grannymail"></a>
     <a href="https://twitter.com/DominiqueCAPaul" title="Follow on Twitter"><img src="https://img.shields.io/twitter/follow/lukasmasuch.svg?style=social&label=Follow"></a>
 </p>
 
