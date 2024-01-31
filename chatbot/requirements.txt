@@ -77,4 +77,4 @@ urllib3==2.2.0
 uvicorn==0.27.0.post1
 wcwidth==0.2.13
 websockets==11.0.3
--e git+https://git@github.com/DominiquePaul/python-whatsapp.git@00a33364348b8039ee25e1cc10833a7266a830dd#egg=whatsapp
+-e git+https://git@github.com/DominiquePaul/python-whatsapp.git@01075b408ca2be9f277739373c4fd141177f6965#egg=whatsapp
