@@ -4,23 +4,22 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
 # Telegram bot
-BOT_TOKEN = os.environ['BOT_TOKEN']
-BOT_USERNAME = os.environ['BOT_USERNAME']
-TELEGRAM_WEBHOOK_URL = os.environ['TELEGRAM_WEBHOOK_URL']
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+BOT_USERNAME = os.environ["BOT_USERNAME"]
+TELEGRAM_WEBHOOK_URL = os.environ["TELEGRAM_WEBHOOK_URL"]
 
 # Whatsapp bot
-WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN')
-APP_ID = os.environ.get('APP_ID')
-APP_SECRET = os.environ.get('APP_SECRET')
-WHATSAPP_API_VERSION = os.environ.get('WHATSAPP_API_VERSION')
-PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID')
-VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN')
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
+# WHATSAPP_APP_ID = os.environ.get('WHATSAPP_APP_ID')
+WHATSAPP_API_VERSION = os.environ.get("WHATSAPP_API_VERSION")
+WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID")
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN")
 
 
 # Supabase
-SUPABASE_URL = os.environ['SUPABASE_URL']
-SUPABASE_KEY = os.environ['SUPABASE_KEY']
-SUPABASE_BUCKET_NAME = os.environ['SUPABASE_BUCKET_NAME']
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_BUCKET_NAME = os.environ["SUPABASE_BUCKET_NAME"]
 
 # Pingen
 PINGEN_ENDPOINT = os.environ["PINGEN_ENDPOINT"]
