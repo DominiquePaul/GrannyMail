@@ -16,6 +16,7 @@ distro==1.9.0
 executing==2.0.1
 fastapi==0.109.0
 gotrue==2.1.0
+gunicorn==21.2.0
 h11==0.14.0
 httpcore==1.0.2
 httpx==0.25.2
@@ -76,4 +77,4 @@ urllib3==2.2.0
 uvicorn==0.27.0.post1
 wcwidth==0.2.13
 websockets==11.0.3
-whatsapp @ git+https://github.com/DominiquePaul/python-whatsapp.git@94e92031c160b458e347b54a1fb49d7be6fc38b5
+-e git+https://git@github.com/DominiquePaul/python-whatsapp.git@94e92031c160b458e347b54a1fb49d7be6fc38b5#egg=whatsapp
