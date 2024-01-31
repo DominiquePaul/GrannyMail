@@ -559,7 +559,7 @@ async def callback_send_confirmation(
     # Send out letter
     draft_id: str = message.draft_referenced  # type: ignore
     user_confirmed: bool = json.loads(query.data)["conf"]  # type: ignore
-    logging.info(
+    logger.info(
         f"Final Sending Callback from TID: {user.telegram_id} with response: {user_confirmed}"
     )
     if user_confirmed:
@@ -640,6 +640,10 @@ async def verify_route(request: Request):
 async def webhook_route(wam: wa.utils.WamBase = Depends(process_webhook_data)):
     if wam is None:
         return JSONResponse(content="ok", status_code=200)
+
+    logger.info(
+        f"Whatsapp: from {wam.phone_number_id} of type {wam.message_type} with content {wam.message_body}"
+    )
 
     if isinstance(wam, wa.utils.WamMediaType):
         await wa.utils.send_message(
