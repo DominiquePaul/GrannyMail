@@ -9,4 +9,4 @@ RUN apt-get update && \
 RUN pip install --no-cache-dir --upgrade pip -r requirements.txt
 COPY . ./
 
-CMD exec gunicorn grannymail.telegrambot:app -k uvicorn.workers.UvicornWorker -b :8000 --workers 1 --threads 8 --timeout 0
+CMD exec gunicorn grannymail.main:app -k uvicorn.workers.UvicornWorker -b :8000 --workers 1 --threads 8 --timeout 0

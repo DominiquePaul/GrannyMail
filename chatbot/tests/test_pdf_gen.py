@@ -1,7 +1,9 @@
 import os
-from grannymail.pdf_gen import create_letter_pdf_as_bytes, create_and_save_letter
-from grannymail.db_client import Address
+
 from pytest import fixture
+
+from grannymail.db.classes import Address
+from grannymail.pdf_gen import create_and_save_letter, create_letter_pdf_as_bytes
 from grannymail.utils.utils import read_txt_file
 
 
@@ -15,7 +17,8 @@ def addressee_and_text():
         address_line2=None,
         zip="50996",
         city="Cologne",
-        country="Germany")
+        country="Germany",
+    )
     return example_text, example_address
 
 

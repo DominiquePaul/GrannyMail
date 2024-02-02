@@ -16,8 +16,8 @@ db_down:
 db_status:
 	cd ../database_config && supabase status && cd ..
 db_sync:
-	echo "This will take 75-120 seconds..."
-	cd ../database_config && snaplet snapshot create && sleep 60 && snaplet snapshot restore --no-reset --latest -y && cd ../chatbot
+	echo "This will take 90-100 seconds..."
+	cd ../database_config && snaplet snapshot create && sleep 90 && snaplet snapshot restore --no-reset --latest -y && cd ../chatbot
 db_messages:
 	python scripts/update_system_messages.py
 freeze:

@@ -1,28 +1,28 @@
 import io
+
 import numpy as np
 from openai import OpenAI
 from rapidfuzz import fuzz
 
-from grannymail.db_client import Address, User, SupabaseClient
+from grannymail.db.classes import Address, User
+from grannymail.db.supaclient import SupabaseClient
 from grannymail.utils.utils import read_txt_file
 
 openai_client = OpenAI()
 db_client = SupabaseClient()
 
 
-# def is_message_empty(msg: str, remove_txt: str = "") -> bool:
-#     """Checks if a message is empty
+def strip_command(msg: str, command: str) -> str:
+    """Strips a command from a message
 
-#     Args:
-#         msg (str): The message to check
-#         remove_txt (str): text known to be in the command that you want to remove
+    Args:
+        msg (str): The message
+        command (str): The command to strip
 
-#     Returns:
-#         bool: True if the message is empty, False otherwise
-#     """
-#     stripped_text = msg.replace(remove_txt, "").strip()
-#     is_empty = len(stripped_text) == 0
-#     return is_empty
+    Returns:
+        str: The message with the command stripped
+    """
+    return msg.replace(command, "").strip()
 
 
 def error_in_address(msg: str) -> str | None:
@@ -37,17 +37,17 @@ def error_in_address(msg: str) -> str | None:
     return None  # Explicitly return None for clarity
 
 
-def strip_command(msg: str, command: str) -> str:
-    """Strips a command from a message
-
-    Args:
-        msg (str): The message
-        command (str): The command to strip
-
-    Returns:
-        str: The message with the command stripped
-    """
-    return msg.replace(command, "").strip()
+def parse_command(txt: str) -> tuple[str | None, str | None]:
+    txt = txt.strip()
+    if txt.startswith("/"):
+        command_end_idx = txt.find(" ")
+        if command_end_idx == -1:  # Command only, no additional text
+            return txt[1:], None
+        command = txt[1:command_end_idx]
+        message_text = txt[command_end_idx:].strip()
+        return command, message_text
+    else:
+        return None, txt
 
 
 def parse_new_address(msg: str) -> Address:
@@ -86,14 +86,12 @@ def parse_new_address(msg: str) -> Address:
 
 def format_address_book(addresses: list[Address]) -> str:
     def format_single_message(address: Address) -> str:
-        formatted_message = f"{address.addressee}\n" +\
-            f"{address.address_line1}\n"
+        formatted_message = f"{address.addressee}\n" + f"{address.address_line1}\n"
 
         if address.address_line2:
             formatted_message += f"{address.address_line2}\n"
 
-        formatted_message += f"{address.zip} {address.city}\n" +\
-            f"{address.country}"
+        formatted_message += f"{address.zip} {address.city}\n" + f"{address.country}"
 
         return formatted_message
 
@@ -113,17 +111,26 @@ def fetch_closest_address_index(fuzzy_string: str, address_book: list[Address]) 
     Returns:
         str|dict: In case of an error a string with an error message is returned that can be passed on to the user. Otherwise a dictionary with the address details of the closest match is returned.
     """
+
     def serialise_address(address: Address) -> str:
-        values = [address.addressee, address.address_line1,
-                  address.address_line2, address.city, address.zip, address.country]
+        values = [
+            address.addressee,
+            address.address_line1,
+            address.address_line2,
+            address.city,
+            address.zip,
+            address.country,
+        ]
         values_subset = [x for x in values if x is not None]
         out = " ".join(values_subset)
         return out
+
     # get the closest match
     serialised_addresses = [serialise_address(ad) for ad in address_book]
     # get the closest match using the fuzzywuzzy package
-    matching_scores = [fuzz.partial_ratio(fuzzy_string, ad)
-                       for ad in serialised_addresses]
+    matching_scores = [
+        fuzz.partial_ratio(fuzzy_string, ad) for ad in serialised_addresses
+    ]
     return int(np.argmax(matching_scores))
 
 
@@ -137,8 +144,7 @@ def transcribe_voice_memo(voice_bytes: bytes) -> str:
     buffer = io.BytesIO(voice_bytes)
     buffer.name = "temp_file.ogg"
     transcript = openai_client.audio.transcriptions.create(
-        model="whisper-1",
-        file=buffer
+        model="whisper-1", file=buffer
     )
     return transcript.text
 
@@ -152,8 +158,7 @@ def transcript_to_letter_text(transcript: str, user: User) -> str:
     Returns:
         str: The letter text
     """
-    # get system prompt
-    system_msg = read_txt_file("grannymail/prompts/system_prompt_de.txt")
+    system_msg = db_client.get_system_message("system-prompt-letter_prompt")
 
     # get current prompt of user
     user = db_client.get_user(user)
@@ -167,13 +172,15 @@ def transcript_to_letter_text(transcript: str, user: User) -> str:
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_msg},
-            {"role": "user", "content": final_prompt}
-        ]
+            {"role": "user", "content": final_prompt},
+        ],
     )
     return completion.choices[0].message.content  # type: ignore
 
 
-def implement_letter_edits(old_content: str, edit_instructions: str, edit_prompt: str) -> str:
+def implement_letter_edits(
+    old_content: str, edit_instructions: str, edit_prompt: str
+) -> str:
     """Implements the edits requested by the user
 
     Args:
@@ -192,21 +199,19 @@ def implement_letter_edits(old_content: str, edit_instructions: str, edit_prompt
         messages=[
             {"role": "system", "content": system_message},
             {"role": "user", "content": full_prompt},
-        ]
+        ],
     )
     out: str = completion.choices[0].message.content  # type: ignore
     return out
 
 
 def format_address_simple(address: Address) -> str:
-    formatted_message = f"{address.addressee}\n" +\
-        f"{address.address_line1}\n"
+    formatted_message = f"{address.addressee}\n" + f"{address.address_line1}\n"
 
     if address.address_line2:
         formatted_message += f"{address.address_line2}\n"
 
-    formatted_message += f"{address.zip} {address.city}\n" +\
-        f"{address.country}"
+    formatted_message += f"{address.zip} {address.city}\n" + f"{address.country}"
 
     return formatted_message
 
@@ -220,13 +225,17 @@ def format_address_for_confirmation(address: Address) -> str:
     Returns:
         str: serialised address
     """
-    formatted_message = f"Addressee: {address.addressee}\n" +\
-        f"Address line 1: {address.address_line1}\n"
+    formatted_message = (
+        f"Addressee: {address.addressee}\n"
+        + f"Address line 1: {address.address_line1}\n"
+    )
 
     if address.address_line2:
         formatted_message += f"Address line 2: {address.address_line2}\n"
 
-    formatted_message += f"Postal Code: {address.zip} \nCity/Town: {address.city}\n" +\
-        f"Country: {address.country}"
+    formatted_message += (
+        f"Postal Code: {address.zip} \nCity/Town: {address.city}\n"
+        + f"Country: {address.country}"
+    )
 
     return formatted_message

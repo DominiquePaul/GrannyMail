@@ -1,12 +1,14 @@
 import pandas as pd
+
 from grannymail.utils.utils import get_message_spreadsheet, get_prompt_from_sheet
 
 
 def test_get_message_spreadsheet():
     df = get_message_spreadsheet()
     assert isinstance(df, pd.DataFrame)
-    assert all([x in df.columns for x in [
-               "full_message_name", "Description", "version_main"]])
+    assert all(
+        [x in df.columns for x in ["full_message_name", "Description", "version_main"]]
+    )
 
 
 def test_get_prompt_from_sheet():

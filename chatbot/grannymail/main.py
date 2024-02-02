@@ -1,35 +1,39 @@
-from .utils.whatsapp_utils import (
-    process_whatsapp_message,
-    is_valid_whatsapp_message,
-)
-from .decorators.security import signature_required
-from fastapi.responses import JSONResponse
-from fastapi import FastAPI, Request, Response, Depends
-import logging
-from contextlib import asynccontextmanager
-from grannymail.pingen import Pingen
-from http import HTTPStatus
-from telegram.ext._contexttypes import ContextTypes
-from telegram.ext import JobQueue
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
-from telegram.ext import MessageHandler, CallbackContext, filters
-from telegram._callbackquery import CallbackQuery
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-import sentry_sdk
-from grannymail.db_client import User, Draft, Order, Address, Message
-from grannymail.pdf_gen import create_letter_pdf_as_bytes
-import grannymail.db_client as db
-import grannymail.utils.message_utils as msg_utils
-import grannymail.constants as const
-import grannymail.config as cfg
-
-import whatsapp as wa
-from whatsapp.fastapi import process_webhook_data, verify
-import requests
 import datetime
-import sys
 import json
+import logging
+import sys
+from contextlib import asynccontextmanager
+from http import HTTPStatus
 
+import requests
+import sentry_sdk
+from fastapi import Depends, FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram._callbackquery import CallbackQuery
+from telegram.ext import (
+    Application,
+    CallbackContext,
+    CallbackQueryHandler,
+    CommandHandler,
+    JobQueue,
+    MessageHandler,
+    filters,
+)
+from telegram.ext._contexttypes import ContextTypes
+
+import grannymail.bot.whatsapp as whatsapp
+import grannymail.config as cfg
+import grannymail.constants as const
+import grannymail.db.classes as dbc
+import grannymail.utils.message_utils as msg_utils
+from grannymail.bot.command_handler import Handler
+from grannymail.bot.whatsapp import WebhookRequestData
+import grannymail.db.supaclient as supaclient
+from grannymail.pdf_gen import create_letter_pdf_as_bytes
+from grannymail.pingen import Pingen
+
+# import grannymail.bot.whatsapp as whatsapp
 
 # setup sentry
 if cfg.SENTRY_ENDPOINT:
@@ -43,7 +47,6 @@ if cfg.SENTRY_ENDPOINT:
         # We recommend adjusting this value in production.
         profiles_sample_rate=1.0,
     )
-
 # set up logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -55,7 +58,7 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
 
-db_client = db.SupabaseClient()
+db_client = supaclient.SupabaseClient()
 pingen_client = Pingen()
 
 # Initialize python telegram bot
@@ -83,7 +86,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.post("/telegram")
+@app.router.post("/api/telegram")
 async def process_update(request: Request):
     req = await request.json()
     update = Update.de_json(req, ptb.bot)
@@ -109,7 +112,7 @@ async def default_message_handling(
     check_msg_not_empty: bool = False,
     check_has_addresses: bool = False,
     check_last_draft_exists: bool = False,
-) -> None | tuple[int, str, User, Message]:
+) -> None | tuple[int, str, dbc.User, dbc.Message]:
     """Runs through some basics checks and returns a tuple of strings that can be used to send a message to the user.
 
     There are some things like variable extraction and error handling that are common to all commands. This function
@@ -132,17 +135,19 @@ async def default_message_handling(
     chat_id: int = update.effective_chat.id  # type: ignore
     if parse_message:
         msg_txt: str = msg_utils.strip_command(
-            update.message.text, "/" + command
-        )  # type: ignore
+            update.message.text, "/" + command  # type: ignore
+        )
     else:
         msg_txt = ""
 
     # check whether user exists
     try:
-        user = db_client.get_user(User(telegram_id=telegram_id))
+        user = db_client.get_user(dbc.User(telegram_id=telegram_id))
         registered_user = user
-    except db.NoEntryFoundError:
-        registered_user = User(telegram_id=telegram_id, user_id=const.ANONYMOUS_USER_ID)
+    except supaclient.NoEntryFoundError:
+        registered_user = dbc.User(
+            telegram_id=telegram_id, user_id=const.ANONYMOUS_USER_ID
+        )
         user_error_msg = db_client.get_system_message(
             "system-error-telegram_user_not_found"
         )
@@ -151,12 +156,12 @@ async def default_message_handling(
         return None
     finally:
         # register the message in either case
-        mime_type = "audio/ogg" if command == "voice" else "text/plain"
+        mime_type = "audio/ogg" if command == "voice" else None
         message = db_client.register_message(
-            user=registered_user,
+            user=registered_user,  # type: ignore
             sent_by="user",
-            mime_type=mime_type,
-            msg_text=msg_txt,
+            attachment_mime_type=mime_type,
+            message_body=msg_txt,
             transcript=None,
             command=command,
         )
@@ -193,7 +198,7 @@ async def default_message_handling(
 
 
 async def handle_no_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    values_returned = await default_message_handling(update, context, command="help")
+    values_returned = await default_message_handling(update, context, command="")
     if values_returned:
         chat_id, _, _, _ = values_returned
     else:
@@ -201,13 +206,9 @@ async def handle_no_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    values_returned = await default_message_handling(update, context, command="help")
-    if values_returned:
-        chat_id, _, _, _ = values_returned
-    else:
-        return
-    response_msg = db_client.get_system_message("help-success")
-    await context.bot.send_message(chat_id=chat_id, text=response_msg)
+    handler = Handler(update, context)
+    await handler.parse_message()
+    await handler.handle_help()
 
 
 async def handle_report_bug(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -237,7 +238,7 @@ async def handle_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE)
         new_prompt
     )
     exit_code, system_error_msg = db_client.update_user(
-        user_data=user, user_update=User(prompt=new_prompt)
+        user_data=user, user_update=dbc.User(prompt=new_prompt)
     )
     if exit_code != 0:
         logger.error(
@@ -375,6 +376,7 @@ async def handle_voice(update: Update, context: CallbackContext):
     # type: ignore
     file = await context.bot.getFile(update.message.voice.file_id)
     duration: float = update.message.voice.duration  # type: ignore
+
     if duration < 5:
         warning_msg = db_client.get_system_message("voice-warning-duration")
         await context.bot.send_message(chat_id=chat_id, text=warning_msg)
@@ -390,7 +392,7 @@ async def handle_voice(update: Update, context: CallbackContext):
     db_client.update_message(message, message_updated)
 
     # Register the message in the database
-    db_client.register_voice_memo(voice_bytes, message)
+    db_client.register_voice_message(voice_bytes, message)
     logger.info("Voice memo w/ success received. Transcript: \n" + transcript)
 
     # Create a draft and send it to the user
@@ -401,7 +403,9 @@ async def handle_voice(update: Update, context: CallbackContext):
     draft_bytes = create_letter_pdf_as_bytes(letter_text)
 
     # Upload the pdf and register the draft in the database
-    db_client.register_draft(Draft(user_id=user.user_id, text=letter_text), draft_bytes)
+    db_client.register_draft(
+        dbc.Draft(user_id=user.user_id, text=letter_text), draft_bytes
+    )
 
     logger.info("Sending pdf")
     resp_msg = db_client.get_system_message("voice-success")
@@ -423,7 +427,7 @@ async def handle_edit_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
     confirmation_msg = db_client.get_system_message("edit-confirm")
     await context.bot.send_message(chat_id=chat_id, text=confirmation_msg)
-    old_draft: Draft = db_client.get_last_draft(user)  # type: ignore
+    old_draft: dbc.Draft = db_client.get_last_draft(user)  # type: ignore
     old_content: str = old_draft.text  # type: ignore
     prompt = db_client.get_system_message("edit-prompt-implement_changes")
     new_letter_content = msg_utils.implement_letter_edits(old_content, msg_user, prompt)
@@ -432,7 +436,7 @@ async def handle_edit_draft(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     new_draft_bytes = create_letter_pdf_as_bytes(new_letter_content)
 
     # register new draft
-    new_draft = Draft(
+    new_draft = dbc.Draft(
         user_id=user.user_id,
         blob_path=old_draft.blob_path,
         text=new_letter_content,
@@ -461,11 +465,11 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id, user_msg, user, message = values_returned
     else:
         return
-    draft: Draft = db_client.get_last_draft(user)  # type: ignore
+    draft: dbc.Draft = db_client.get_last_draft(user)  # type: ignore
     user_warning = ""
     # Commented out because this won't work. New send commands will trigger a new
     # try:
-    #     db_client.get_order(Order(draft_id=draft.draft_id))
+    #     db_client.get_order(dbc.Order(draft_id=draft.draft_id))
     #     user_warning = ""
     # except db.NoEntryFoundError:
     #     user_warning = option_confirm = db_client.get_system_message("send-warning-draft_used_before"))
@@ -479,7 +483,7 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Creating pdf")
     draft_bytes = create_letter_pdf_as_bytes(draft.text, address)  # type: ignore
     draft = db_client.register_draft(
-        Draft(
+        dbc.Draft(
             user_id=user.user_id,
             builds_on=draft.draft_id,
             text=draft.text,
@@ -523,14 +527,16 @@ async def handle_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def callback_add_address(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, message: Message
+    update: Update, context: ContextTypes.DEFAULT_TYPE, message: dbc.Message
 ) -> None:
     query: CallbackQuery = update.callback_query  # type: ignore
 
     user_confirmed: bool = json.loads(query.data)["conf"]  # type: ignore
     if user_confirmed:
-        address: Address = msg_utils.parse_new_address(message.message)  # type: ignore
-        user = db_client.get_user(User(user_id=message.user_id))
+        address: dbc.Address = msg_utils.parse_new_address(
+            message.message_body  # type: ignore
+        )
+        user = db_client.get_user(dbc.User(user_id=message.user_id))
         address.user_id = user.user_id
         db_client.add_address(address)
         updated_msg = db_client.get_system_message("add_address_callback-confirm")
@@ -542,7 +548,9 @@ async def callback_add_address(
     # if the user confirms we follow-up with a message that shows the new address book
     if user_confirmed:
         chat_id: str = update.effective_chat.id  # type: ignore
-        address_book = db_client.get_user_addresses(user=User(user_id=address.user_id))
+        address_book = db_client.get_user_addresses(
+            user=dbc.User(user_id=address.user_id)
+        )
         formatted_address_book = msg_utils.format_address_book(address_book)
         follow_up_address_book_msg = db_client.get_system_message(
             "add_address_callback-success-follow_up"
@@ -551,11 +559,11 @@ async def callback_add_address(
 
 
 async def callback_send_confirmation(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, message: Message
+    update: Update, context: ContextTypes.DEFAULT_TYPE, message: dbc.Message
 ) -> None:
     """Parses the CallbackQuery and updates the message text."""
     query: CallbackQuery = update.callback_query  # type: ignore
-    user = db_client.get_user(User(user_id=message.user_id))
+    user = db_client.get_user(dbc.User(user_id=message.user_id))
     # Send out letter
     draft_id: str = message.draft_referenced  # type: ignore
     user_confirmed: bool = json.loads(query.data)["conf"]  # type: ignore
@@ -563,17 +571,16 @@ async def callback_send_confirmation(
         f"Final Sending Callback from TID: {user.telegram_id} with response: {user_confirmed}"
     )
     if user_confirmed:
-
         # Fetch the referenced draft
-        draft = db_client.get_draft(Draft(draft_id=draft_id))
-        user = db_client.get_user(User(user_id=draft.user_id))
+        draft = db_client.get_draft(dbc.Draft(draft_id=draft_id))
+        user = db_client.get_user(dbc.User(user_id=draft.user_id))
 
         # download the draft pdf as bytes
         letter_name = f"letter_{user.first_name}_{user.last_name}_{str(datetime.datetime.utcnow())}.pdf"
         letter_bytes = db_client.download_draft(draft)
 
         # create an order and send letter
-        order = Order(
+        order = dbc.Order(
             user_id=user.user_id,
             draft_id=draft.draft_id,
             address_id=draft.address_id,
@@ -593,7 +600,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
     await query.answer()
     mid: str = json.loads(query.data)["mid"]  # type: ignore
-    message = db_client.get_message(Message(message_id=mid))
+    message = db_client.get_message(dbc.Message(message_id=mid))
     if message.command == "add_address":
         await callback_add_address(update, context, message)
     elif message.command == "send":
@@ -633,28 +640,32 @@ job_queue.run_daily(
 
 @app.router.get("/api/whatsapp")
 async def verify_route(request: Request):
-    return verify(request)
+    return whatsapp.fastapi_verify(request)
 
 
 @app.router.post("/api/whatsapp")
-async def webhook_route(wam: wa.utils.WamBase = Depends(process_webhook_data)):
-    if wam is None:
+async def webhook_route(data: WebhookRequestData):
+    try:
+        handler = Handler(data=data)
+        await handler.parse_message()
+
+        # Dynamically call the command method based on the command name
+        command = handler.handler.message.command
+        if command is not None:
+            command_method_name = f"handle_{command}"
+            command_method = getattr(handler, command_method_name, None)
+            if command_method and callable(command_method):
+                await command_method()
+            else:
+                raise ValueError(
+                    f"Unknown or uncallable command: {handler.handler.message.command}"
+                )
         return JSONResponse(content="ok", status_code=200)
-
-    logger.info(
-        f"Whatsapp: from {wam.phone_number_id} of type {wam.message_type} with content {wam.message_body}"
-    )
-
-    if isinstance(wam, wa.utils.WamMediaType):
-        await wa.utils.send_message(
-            recipient_id=wam.wa_id, message=f"Mmm, {wam.message_type}"
-        )
-    elif wam.message_type == "text":
-        await wa.utils.send_message(recipient_id=wam.wa_id, message=wam.message_body)
-    return JSONResponse(content="ok", status_code=200)
+    except:
+        return JSONResponse(content="Internal Server Error", status_code=500)
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("grannymail.telegrambot:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("grannymail.main:app", host="127.0.0.1", port=8000, reload=True)

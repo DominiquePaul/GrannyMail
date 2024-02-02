@@ -1,11 +1,12 @@
 import logging
-import requests
-import grannymail.config as cfg
-from fastapi.responses import JSONResponse
-
 
 # from app.services.openai_service import generate_response
 import re
+
+import requests
+from fastapi.responses import JSONResponse
+
+import grannymail.config as cfg
 
 
 def log_http_response(response):
@@ -52,7 +53,10 @@ def send_message(data):
         requests.RequestException
     ) as e:  # This will catch any general request exception
         logging.error(f"Request failed due to: {e}")
-        return JSONResponse({"status": "error", "message": "Failed to send message"}), 500
+        return (
+            JSONResponse({"status": "error", "message": "Failed to send message"}),
+            500,
+        )
     else:
         # Process the response as normal
         log_http_response(response)

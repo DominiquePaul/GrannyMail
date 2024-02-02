@@ -1,4 +1,5 @@
 from pytest import fixture
+
 from grannymail.pingen import Pingen
 
 
@@ -13,8 +14,7 @@ def test_send_letter(pingen):
     file_path = "./tests/test_data/dummy_letter.pdf"
     with open(file_path, "rb") as f:
         file_as_bytes = f.read()
-    upload_response = pingen.upload_and_send_letter(
-        file_as_bytes, "test_file.pdf")
+    upload_response = pingen.upload_and_send_letter(file_as_bytes, "test_file.pdf")
     assert len(upload_response["id"]) == 36
     assert isinstance(upload_response, dict)
 

@@ -1,6 +1,11 @@
 import time
-from grannymail.utils.message_utils import transcribe_voice_memo, transcript_to_letter_text, implement_letter_edits
-from grannymail.utils.utils import read_txt_file, get_prompt_from_sheet
+
+from grannymail.utils.message_utils import (
+    implement_letter_edits,
+    transcribe_voice_memo,
+    transcript_to_letter_text,
+)
+from grannymail.utils.utils import get_prompt_from_sheet, read_txt_file
 
 
 def test_transcribe_voice_memo():
@@ -38,8 +43,7 @@ def test_implement_letter_edits():
     old_content = "Hallo Doris, mir geht es gut!"
     edit_instructions = "1) delete 'Doris' 2) replace 'gut' with 'schlecht'"
     edit_prompt = get_prompt_from_sheet("edit-prompt-implement_changes")
-    response = implement_letter_edits(
-        old_content, edit_instructions, edit_prompt)
+    response = implement_letter_edits(old_content, edit_instructions, edit_prompt)
     assert isinstance(response, str)
     assert "schlecht" in response
     assert "Doris" not in response

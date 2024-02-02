@@ -1,21 +1,26 @@
-import pytest
 from dataclasses import asdict
-from grannymail.db_client import User, NoEntryFoundError, Address, Draft
+
+import pytest
+
+from grannymail.db.classes import Address, Draft, User
+from grannymail.db.supaclient import NoEntryFoundError
 from grannymail.utils.utils import get_prompt_from_sheet
 
 
-class TestUser():
+class TestUser:
     def test_to_dict(self):
         user = User(
             first_name="test_dom",
             last_name="test_Paul",
             email="test@dom.com",
-            telegram_id="dominique_paul"
+            telegram_id="dominique_paul",
         )
-        expected = {"first_name": "test_dom",
-                    "last_name": "test_Paul",
-                    "email": "test@dom.com",
-                    "telegram_id": "dominique_paul"}
+        expected = {
+            "first_name": "test_dom",
+            "last_name": "test_Paul",
+            "email": "test@dom.com",
+            "telegram_id": "dominique_paul",
+        }
         assert expected == user.to_dict()
 
 
@@ -25,18 +30,22 @@ def test_add_user(dbclient):
         first_name="Mike",
         last_name="Tyson",
         email="mike@tyson.com",
-        telegram_id="mike_tyson"
+        telegram_id="mike_tyson",
     )
     dbclient.add_user(user_to_add)
     user_retrieved = dbclient.get_user(User(telegram_id="mike_tyson"))
 
     # Check that the returned user is of the right type
     assert isinstance(
-        user_retrieved, User), f"Wrong class returned. Expected user, got {type(user_retrieved)}"
+        user_retrieved, User
+    ), f"Wrong class returned. Expected user, got {type(user_retrieved)}"
 
     # Check that all values are in the database
-    user2_dict = {key: value for key, value in asdict(
-        user_retrieved).items() if key in user_to_add.to_dict().keys()}
+    user2_dict = {
+        key: value
+        for key, value in asdict(user_retrieved).items()
+        if key in user_to_add.to_dict().keys()
+    }
     assert user_to_add.to_dict() == user2_dict
 
     # Delete user
@@ -54,7 +63,7 @@ def test_add_adress(dbclient, user):
         address_line2="test_address_line2",
         city="test_city",
         zip="test_postal_code",
-        country="test_country"
+        country="test_country",
     )
     resp = dbclient.add_address(address)
     assert isinstance(resp, Address)
@@ -66,7 +75,10 @@ def test_add_adress(dbclient, user):
     assert isinstance(address_retrieved, list)
     assert len(address_retrieved) == 1
     reduced_address_received = {
-        key: value for key, value in address_retrieved[0].to_dict().items() if key in address.to_dict()}
+        key: value
+        for key, value in address_retrieved[0].to_dict().items()
+        if key in address.to_dict()
+    }
     assert address.to_dict() == reduced_address_received
 
     # delete address
@@ -87,8 +99,7 @@ def test_delete_obj(dbclient):
 
 def test_update_system_messages(dbclient):
     dbclient.update_system_messages()
-    results = dbclient.client.table(
-        "system_messages").select("*").execute().data
+    results = dbclient.client.table("system_messages").select("*").execute().data
     assert results != []
     # test that the total number of messages is greater than a certain amount
     assert len(results) > 25

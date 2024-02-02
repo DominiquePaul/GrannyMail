@@ -1,10 +1,12 @@
-
-from openai import OpenAI
-from grannymail.utils import get_message_spreadsheet
 import os
 import sys
+
+from openai import OpenAI
+
+from grannymail.utils import get_message_spreadsheet  # type: ignore
+
 # add the 'grannymail' directory to the path
-sys.path.append(os.path.join(sys.path[0], '../'))
+sys.path.append(os.path.join(sys.path[0], "../"))
 
 # command = "add_address-error-too_short"
 # command = "add_address-error-too_long"
@@ -54,13 +56,14 @@ completion = openai_client.chat.completions.create(
     temperature=1.3,
     messages=[
         {"role": "system", "content": system},
-        {"role": "user", "content": prompt.format(
-            description=description, old_msg=old_msg)}
-    ]
+        {
+            "role": "user",
+            "content": prompt.format(description=description, old_msg=old_msg),
+        },
+    ],
 )
 
 print(completion.choices[0].message.content)
-
 
 
 # Feel free to make allusions to magic as if the service is magic itself.  Do not use the term "oopsie" or similar.

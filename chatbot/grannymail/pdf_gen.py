@@ -1,10 +1,12 @@
 import logging
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm, inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from grannymail.db_client import Address
 from io import BytesIO
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch, mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+from grannymail.db.classes import Address
 
 # Constants for page layout
 PAGE_HEIGHT, PAGE_WIDTH = A4
@@ -43,8 +45,11 @@ def draw_address(canvas, address):
     address_lines = address_to_address_lines(address)
     for i, line in enumerate(address_lines):
         if line:  # Only draw non-empty lines
-            canvas.drawString(ADDRESS_X_OFFSET,  # Use the new x-coordinate offset
-                              PAGE_HEIGHT + 60*mm - ADDRESS_Y_OFFSET - i * 4 * mm, line)
+            canvas.drawString(
+                ADDRESS_X_OFFSET,  # Use the new x-coordinate offset
+                PAGE_HEIGHT + 60 * mm - ADDRESS_Y_OFFSET - i * 4 * mm,
+                line,
+            )
 
 
 def my_first_page(canvas, doc, address):
@@ -61,8 +66,7 @@ def my_later_pages(canvas, doc):
     """Creates the layout for subsequent pages."""
     canvas.saveState()
     canvas.setFont(DEFAULT_FONT, DEFAULT_FONT_SIZE)
-    canvas.drawString(PAGE_NUMBER_OFFSET,
-                      PAGE_NUMBER_OFFSET, f"Page {doc.page}")
+    canvas.drawString(PAGE_NUMBER_OFFSET, PAGE_NUMBER_OFFSET, f"Page {doc.page}")
     canvas.restoreState()
 
 
@@ -73,7 +77,7 @@ def create_letter_pdf_as_bytes(input_text: str, address: Address = Address()) ->
     doc = SimpleDocTemplate(buffer, pagesize=A4)
 
     # Create a list to hold the PDF elements
-    story = [Spacer(1,  ADDRESS_Y_OFFSET + ADDRESS_TO_TEXT_GAP)]
+    story = [Spacer(1, ADDRESS_Y_OFFSET + ADDRESS_TO_TEXT_GAP)]
 
     # Split the input text into paragraphs and add them to the story
     for paragraph_text in input_text.split("\n"):
@@ -84,7 +88,7 @@ def create_letter_pdf_as_bytes(input_text: str, address: Address = Address()) ->
     doc.build(
         story,
         onFirstPage=lambda canvas, doc: my_first_page(canvas, doc, address),
-        onLaterPages=my_later_pages
+        onLaterPages=my_later_pages,
     )
 
     # Retrieve the PDF data and close the buffer
@@ -94,9 +98,10 @@ def create_letter_pdf_as_bytes(input_text: str, address: Address = Address()) ->
     return pdf_data
 
 
-def create_and_save_letter(file_path: str, input_text: str, address: Address = Address()):
-    pdf_bytes = create_letter_pdf_as_bytes(
-        input_text=input_text, address=address)
+def create_and_save_letter(
+    file_path: str, input_text: str, address: Address = Address()
+):
+    pdf_bytes = create_letter_pdf_as_bytes(input_text=input_text, address=address)
     with open(file_path, "wb") as f:
         f.write(pdf_bytes)
 
@@ -114,6 +119,4 @@ if __name__ == "__main__":
     example_text = "Hello world!\nThis is a test letter."
     letter_name = "test_letter.pdf"
 
-    letter_bytes = create_letter_pdf_as_bytes(
-        address=address, input_text=example_text
-    )
+    letter_bytes = create_letter_pdf_as_bytes(address=address, input_text=example_text)

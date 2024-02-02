@@ -1,8 +1,10 @@
-import uuid
-import logging
-import json
 import datetime
+import json
+import logging
+import uuid
+
 import requests
+
 import grannymail.config as cfg
 
 
@@ -18,8 +20,7 @@ class Pingen:
         client_id: str = cfg.PINGEN_CLIENT_ID,
         client_secret: str = cfg.PINGEN_CLIENT_SECRET,
         organisation_uuid: str = cfg.PINGEN_ORGANISATION_UUID,
-        scopes: list[str] = ["letter", "batch",
-                             "webhook", "organisation_read"],
+        scopes: list[str] = ["letter", "batch", "webhook", "organisation_read"],
     ):
         """instantiates the Pingen class. Used to define general attributes and to get the credentials.
 
@@ -48,7 +49,7 @@ class Pingen:
         # condition to check whether credentials are still valid, if true then nothing to do
         if (
             self.credentials_timeout is not None
-            and self.credentials_timeout > datetime.now()
+            and self.credentials_timeout > datetime.datetime.now()
         ):
             return self.access_token
         else:
@@ -160,7 +161,8 @@ class Pingen:
             raise Exception(
                 "Could not upload letter. Status code: {}: {}".format(
                     response.status_code, response.text
-                ))
+                )
+            )
 
     def _send_letter(self, pingen_letter_uuid: str):
         """Send out letters that were not automatically sent out upon upload
@@ -230,16 +232,19 @@ class Pingen:
         )
         if r.status_code == 200:
             logging.info(
-                f"Successfully got letter details for letter with uid {letter_uuid}")
+                f"Successfully got letter details for letter with uid {letter_uuid}"
+            )
             if letter_uuid == "":
                 return json.loads(r.text)["data"]
             else:
                 return [json.loads(r.text)["data"]]
         else:
             logging.error(
-                f"Could not get letter details for letter with uid {letter_uuid}. Status code: {r.status_code}: {r.text}")
+                f"Could not get letter details for letter with uid {letter_uuid}. Status code: {r.status_code}: {r.text}"
+            )
             raise Exception(
-                f"Could not get letter details for letter with uid {letter_uuid}. Status code: {r.status_code}: {r.text}")
+                f"Could not get letter details for letter with uid {letter_uuid}. Status code: {r.status_code}: {r.text}"
+            )
 
     def get_all_letters(self) -> list[dict]:
         """Get all letters for an organisation
@@ -250,12 +255,12 @@ class Pingen:
         return self._get_letters()
 
     def get_letter_details(self, letter_uuid: str) -> dict:
-        """Get the details of a specific letter
-        """
+        """Get the details of a specific letter"""
         if letter_uuid is None:
             raise ValueError("No value provided for parameter 'letter_uuid'")
         response = self._get_letters(letter_uuid)
         if len(response) != 1:
             raise ValueError(
-                f"letter_uuid should be a string of length 1, but is {len(response)}")
+                f"letter_uuid should be a string of length 1, but is {len(response)}"
+            )
         return response[0]
