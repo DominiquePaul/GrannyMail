@@ -1,14 +1,15 @@
 import io
+import typing as t
 
 import numpy as np
-from openai import OpenAI
+from openai import AsyncOpenAI
 from rapidfuzz import fuzz
 
 from grannymail.db.classes import Address, User
 from grannymail.db.supaclient import SupabaseClient
 from grannymail.utils.utils import read_txt_file
 
-openai_client = OpenAI()
+openai_client = AsyncOpenAI()
 db_client = SupabaseClient()
 
 
@@ -37,17 +38,18 @@ def error_in_address(msg: str) -> str | None:
     return None  # Explicitly return None for clarity
 
 
-def parse_command(txt: str) -> tuple[str | None, str | None]:
+def parse_command(txt: str) -> tuple[str | None, str]:
     txt = txt.strip()
+    txt = txt.replace("\n", " \n", 1)
     if txt.startswith("/"):
         command_end_idx = txt.find(" ")
         if command_end_idx == -1:  # Command only, no additional text
-            return txt[1:], None
+            return txt[1:], ""
         command = txt[1:command_end_idx]
         message_text = txt[command_end_idx:].strip()
         return command, message_text
     else:
-        return None, txt
+        return "no_command", txt
 
 
 def parse_new_address(msg: str) -> Address:
@@ -109,7 +111,7 @@ def fetch_closest_address_index(fuzzy_string: str, address_book: list[Address]) 
         phone_number (str): phone number of the user whose address book should be searched
 
     Returns:
-        str|dict: In case of an error a string with an error message is returned that can be passed on to the user. Otherwise a dictionary with the address details of the closest match is returned.
+        int: Returns the index of the closest match
     """
 
     def serialise_address(address: Address) -> str:
@@ -131,11 +133,14 @@ def fetch_closest_address_index(fuzzy_string: str, address_book: list[Address]) 
     matching_scores = [
         fuzz.partial_ratio(fuzzy_string, ad) for ad in serialised_addresses
     ]
-    return int(np.argmax(matching_scores))
+    if max(matching_scores) > 50:
+        return int(np.argmax(matching_scores))
+    else:
+        return -1
 
 
-def transcribe_voice_memo(voice_bytes: bytes) -> str:
-    """Transcribes a voice memo
+async def transcribe_voice_memo(voice_bytes: bytes, duration: float) -> str:
+    """Transcribes a voice memo asynchronously
 
     Returns:
         str: The transcribed text
@@ -143,13 +148,17 @@ def transcribe_voice_memo(voice_bytes: bytes) -> str:
     # Use an in-memory bytes buffer to avoid writing to disk
     buffer = io.BytesIO(voice_bytes)
     buffer.name = "temp_file.ogg"
-    transcript = openai_client.audio.transcriptions.create(
-        model="whisper-1", file=buffer
+    transcript = await openai_client.audio.transcriptions.create(
+        model="whisper-1",
+        file=buffer,
+        # response_format="text",
+        # if duration takes unexpectedly long we don't want to deadlock the execution
+        timeout=0.75 * duration,
     )
     return transcript.text
 
 
-def transcript_to_letter_text(transcript: str, user: User) -> str:
+async def transcript_to_letter_text(transcript: str, user: User) -> str:
     """Converts a transcript to a letter text
 
     Args:
@@ -161,25 +170,28 @@ def transcript_to_letter_text(transcript: str, user: User) -> str:
     system_msg = db_client.get_system_message("system-prompt-letter_prompt")
 
     # get current prompt of user
-    user = db_client.get_user(user)
-    user_prompt = user.prompt
+    retrieved_user = db_client.get_user(user)
+    user_prompt = retrieved_user.prompt
     if user_prompt is None:
-        user_prompt = read_txt_file("grannymail/prompts/system_prompt_de.txt")
+        user_prompt = db_client.get_system_message("system-prompt-letter_prompt")
     final_prompt = f"Instructions:\n User input:\n{user_prompt}\nTranscript of the message: {transcript} Your letter:"
 
     # feed into gpt:
-    completion = openai_client.chat.completions.create(
+    completion = await openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_msg},
             {"role": "user", "content": final_prompt},
         ],
+        # 5 tokens per second, assumed mean character length of 4 per token
+        timeout=30,  # len(final_prompt)/(4*5),
     )
     return completion.choices[0].message.content  # type: ignore
 
 
-def implement_letter_edits(
-    old_content: str, edit_instructions: str, edit_prompt: str
+async def implement_letter_edits(
+    old_content: str,
+    edit_instructions: str,
 ) -> str:
     """Implements the edits requested by the user
 
@@ -191,10 +203,11 @@ def implement_letter_edits(
     Returns:
         str: The new transcript
     """
+    edit_prompt = db_client.get_system_message("edit-prompt-implement_changes")
     system_message = db_client.get_system_message("edit-prompt-system_message")
     full_prompt = edit_prompt.format(old_content, edit_instructions)
     # feed into gpt:
-    completion = openai_client.chat.completions.create(
+    completion = await openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_message},

@@ -1,6 +1,7 @@
-from grannymail.db.supaclient import SupabaseClient
 import os
 import sys
+
+from grannymail.db.supaclient import SupabaseClient
 
 # add the 'grannymail' directory to the path
 sys.path.append(os.path.join(sys.path[0], "../"))

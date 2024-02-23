@@ -1,16 +1,19 @@
 from dataclasses import asdict, dataclass, field
+import typing as t
 
 
 @dataclass
 class AbstractDataTableClass:
-    """All dataclasses should have a _unique_fields attribute to identify the
-    values in that table that must be unique. This assumption simplifies a lot
-    of the implemented methods
+    """
+    A base data class for representing a table-like data structure with unique fields.
+    Provides methods to convert the data class to a dictionary, check if all fields are empty,
+    find fields that differ from another instance of the same class, and create a copy of the instance.
     """
 
     _unique_fields: list[str]
 
     def to_dict(self) -> dict:
+        """Converts the data class instance to a dictionary, excluding None values and the _unique_fields attribute."""
         return {
             k: v
             for k, v in asdict(self).items()
@@ -18,7 +21,13 @@ class AbstractDataTableClass:
         }
 
     def is_empty(self) -> bool:
-        """Returns True if all fields of the dataclass are None. Requires that None is the default value for all fields"""
+        """
+        Checks if all fields in the data class are None, excluding the _unique_fields attribute.
+        Requires that None is the default value for all fields.
+
+        Returns:
+            bool: True if all fields are None, False otherwise.
+        """
         return all(
             [
                 getattr(self, field) is None
@@ -27,8 +36,21 @@ class AbstractDataTableClass:
             ]
         )
 
-    def find_different_fields(self, obj_compared) -> list:
-        """Compares objec with another object of the same type and compares all fields that have changed except for fields that are None in the incoming object"""
+    def find_different_fields(self, obj_compared: "AbstractDataTableClass") -> list:
+        """
+        Compares the current instance with another object of the same type to identify differing fields.
+        Fields that are None in the incoming object are ignored in the comparison.
+
+        Args:
+            obj_compared: The object to compare against.
+
+        Returns:
+            list: A list of field names that have different values between the two objects.
+
+        Raises:
+            TypeError: If obj_compared is not an instance of AbstractDataTableClass.
+            ValueError: If the two objects do not have the same fields.
+        """
         differing_fields = []
         if not isinstance(obj_compared, AbstractDataTableClass):
             raise TypeError(
@@ -44,6 +66,12 @@ class AbstractDataTableClass:
         return differing_fields
 
     def copy(self):
+        """
+        Creates a deep copy of the current instance.
+
+        Returns:
+            A new instance of the same class with copied attributes.
+        """
         # Use the __dict__ attribute to get all attributes and their values
         new_instance = type(self).__new__(type(self))
         new_instance.__dict__ = self.__dict__.copy()
@@ -83,17 +111,39 @@ class Message(AbstractDataTableClass):
     draft_referenced: str | None = None
     message_type: str | None = None
     phone_number: str | None = None
+    action_confirmed: bool | None = None
+    response_to: str | None = None
+    messaging_platform: str | None = None
+
+    @property
+    def safe_message_body(self) -> str:
+        if self.message_body is None:
+            raise ValueError("Attempted to access message_body when it is None")
+        return self.message_body
+
+    @property
+    def safe_user_id(self) -> str:
+        if self.user_id is None:
+            raise ValueError("Attempted to access user_id when it is None")
+        return self.user_id
 
 
 @dataclass
 class TelegramMessage(Message):
-    tg_id: str | None = None
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["message_id", "tg_message_id"], kw_only=True
+    )
+    tg_user_id: str | None = None
     tg_chat_id: str | None = None
     tg_message_id: str | None = None
+    messaging_platform: str = "Telegram"
 
 
 @dataclass
 class WhatsappMessage(Message):
+    _unique_fields: list[str] = field(
+        default_factory=lambda: ["message_id", "wa_mid"], kw_only=True
+    )
     wa_mid: str | None = None
     wa_webhook_id: str | None = None
     wa_phone_number_id: str | None = None
@@ -101,6 +151,7 @@ class WhatsappMessage(Message):
     wa_media_id: str | None = field(default=None, kw_only=True)
     wa_reference_wamid: str | None = field(default=None, kw_only=True)
     wa_reference_message_user_phone: str | None = field(default=None, kw_only=True)
+    messaging_platform: str = "WhatsApp"
 
 
 @dataclass

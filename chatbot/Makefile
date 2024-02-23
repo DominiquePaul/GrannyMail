@@ -16,9 +16,10 @@ db_down:
 db_status:
 	cd ../database_config && supabase status && cd ..
 db_sync:
-	echo "This will take 90-100 seconds..."
-	cd ../database_config && snaplet snapshot create && sleep 90 && snaplet snapshot restore --no-reset --latest -y && cd ../chatbot
+	cd ../database_config "&& snaplet ss create; sleep 5; while snaplet ss ls | grep "PROGRESS"; do echo "..."; sleep 5; done; snaplet ss restore --latest --no-reset -y && cd ../chatbot
+	# echo "This will take 90-100 seconds..."
+	# cd ../database_config && snaplet snapshot create && sleep 90 && snaplet snapshot restore --no-reset --latest -y && cd ../chatbot
 db_messages:
-	python scripts/update_system_messages.py
+	python -m scripts.update_system_messages
 freeze:
 	pip freeze | sed "s!git+ssh://!git+https://!" >requirements.txt

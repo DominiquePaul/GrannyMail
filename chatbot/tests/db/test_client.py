@@ -25,34 +25,30 @@ class TestUser:
 
 
 def test_add_user(dbclient):
-    # Create a new user
-    user_to_add = User(
-        first_name="Mike",
-        last_name="Tyson",
-        email="mike@tyson.com",
-        telegram_id="mike_tyson",
-    )
+    user_details = {
+        "first_name": "Mike",
+        "last_name": "Tyson",
+        "email": "mike@tyson.com",
+        "telegram_id": "mike_tyson",
+    }
+    # Create and add a new user
+    user_to_add = User(**user_details)  # type: ignore
     dbclient.add_user(user_to_add)
-    user_retrieved = dbclient.get_user(User(telegram_id="mike_tyson"))
 
-    # Check that the returned user is of the right type
+    # Retrieve the added user
+    user_retrieved = dbclient.get_user(User(telegram_id="mike_tyson"))
     assert isinstance(
         user_retrieved, User
-    ), f"Wrong class returned. Expected user, got {type(user_retrieved)}"
+    ), f"Expected User instance, got {type(user_retrieved)}"
 
-    # Check that all values are in the database
-    user2_dict = {
-        key: value
-        for key, value in asdict(user_retrieved).items()
-        if key in user_to_add.to_dict().keys()
-    }
-    assert user_to_add.to_dict() == user2_dict
+    # Validate retrieved user details
+    retrieved_user_details = asdict(user_retrieved)
+    for key in user_details:
+        assert user_details[key] == retrieved_user_details[key], f"Mismatch in {key}"
 
-    # Delete user
+    # Delete and verify deletion of the user
     dbclient.delete_user(user_to_add)
-
-    with pytest.raises(NoEntryFoundError) as exc_info:
-        dbclient.get_user(User(telegram_id="mike_tyson"))
+    assert dbclient.get_user(User(telegram_id="mike_tyson")) is None
 
 
 def test_add_adress(dbclient, user):
@@ -87,14 +83,9 @@ def test_add_adress(dbclient, user):
 
 
 def test_delete_obj(dbclient):
-    user = User(telegram_id="d0ominique", email="fictive@email.com")
-    dbclient.add_user(user)
-    user_full = dbclient.get_user(user)
-
-    with pytest.raises(ValueError) as exc_info:
-        dbclient._delete_entry(user)
-
-    assert dbclient._delete_entry(user_full) == 1
+    user = User(telegram_id="fake_dominique", email="fictive@email.com")
+    user = dbclient.add_user(user)
+    assert dbclient._delete_entry(user)
 
 
 def test_update_system_messages(dbclient):

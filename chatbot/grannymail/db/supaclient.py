@@ -1,10 +1,27 @@
+from enum import Enum
 from datetime import datetime
 
-from supabase import Client, create_client
+from supabase import Client, create_client  # type: ignore
 
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
 from grannymail.utils.utils import get_message_spreadsheet
+
+
+class NoUserFound(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
+
+class TableName(Enum):
+    USERS = "users"
+    MESSAGES = "messages"
+    FILES = "files"
+    ADDRESSES = "addresses"
+    DRAFTS = "drafts"
+    ORDERS = "orders"
+    ATTACHMENTS = "attachments"
+    CHANGELOG = "changelog"
 
 
 class NoEntryFoundError(Exception):
@@ -18,9 +35,10 @@ class NoEntryFoundError(Exception):
 
 
 class DuplicateEntryError(Exception):
-    def __init__(self, message="Duplicate entry already exists in the database"):
-        self.message = message
-        super().__init__(self.message)
+    def __init__(self, duplicate_keys_values: list[tuple[str, str]]) -> None:
+        super().__init__(
+            f"Duplicate entry already exists in the database. Duplicates keys/values: {', '.join(map(str, duplicate_keys_values))}"
+        )
 
 
 class SupabaseClient:
@@ -44,15 +62,21 @@ class SupabaseClient:
         self.client: Client = create_client(url, key)
         self.bucket = bucket
         self.obj_to_table = {
-            dbc.User: "users",
-            dbc.Message: "messages",
-            dbc.File: "files",
-            dbc.Address: "addresses",
-            dbc.Draft: "drafts",
-            dbc.Order: "orders",
-            dbc.Attachment: "attachments",
-            dbc.Changelog: "changelog",
+            dbc.User: TableName.USERS.value,
+            dbc.Message: TableName.MESSAGES.value,
+            dbc.File: TableName.FILES.value,
+            dbc.Address: TableName.ADDRESSES.value,
+            dbc.Draft: TableName.DRAFTS.value,
+            dbc.Order: TableName.ORDERS.value,
+            dbc.Attachment: TableName.ATTACHMENTS.value,
+            dbc.Changelog: TableName.CHANGELOG.value,
         }
+
+    def get_table_name(self, obj_class):
+        try:
+            return self.obj_to_table[obj_class]
+        except KeyError:
+            raise ValueError(f"No table mapping found for class {obj_class.__name__}")
 
     def _check_duplicates(self, table: str, data: dbc.AbstractDataTableClass):
         """Checks for a set of column values whether they already exist in the database
@@ -79,44 +103,49 @@ class SupabaseClient:
                     .execute()
                 )
                 if response.data != []:
-                    duplicated_values.append(key)
+                    duplicated_values.append((key, data_dict[key]))
         if duplicated_values:
-            raise DuplicateEntryError()
+            raise DuplicateEntryError(duplicated_values)
 
-    def _validate_exactly_one_supabase_item(
+    # def _validate_exactly_one_supabase_item(
+    #     self,
+    #     response: list,
+    #     table: str,
+    #     field_name: str,
+    #     field_value: str | float | int,
+    # ) -> None:
+    #     """Checks that the response from Supabase is valid.
+
+    #     This means that a single entry was found with the given field_name and field_value
+
+    #     Args:
+    #         response (list): _description_
+    #         field_name (str): _description_
+    #         field_value (str | float | int): _description_
+
+    #     Raises:
+    #         ValueError: If the response is not a list. For example if there is an error in the query
+    #         NoEntryFoundError: No entry found in the database for searching for {key} = {data}
+    #         ValueError: Multiple entries found with {key} = {data}
+    #     """
+    #     if not isinstance(response, list):
+    #         raise ValueError(
+    #             f"Response from Supabase was not a list. Instead got {type(response)}"
+    #         )
+    #     if len(response) != 1:
+    #         if len(response) == 0:
+    #             raise NoEntryFoundError(table, field_name, field_value)
+    #         else:
+    #             raise ValueError(
+    #                 f"More than one user found with {field_name} {field_value}"
+    #             )
+
+    def _get_obj_info(
         self,
-        response: list,
         table: str,
-        field_name: str,
-        field_value: str | float | int,
-    ) -> None:
-        """Checks that the response from Supabase is valid.
-
-        This means that a single entry was found with the given field_name and field_value
-
-        Args:
-            response (list): _description_
-            field_name (str): _description_
-            field_value (str | float | int): _description_
-
-        Raises:
-            ValueError: If the response is not a list. For example if there is an error in the query
-            NoEntryFoundError: No entry found in the database for searching for {key} = {data}
-            ValueError: Multiple entries found with {key} = {data}
-        """
-        if not isinstance(response, list):
-            raise ValueError(
-                f"Response from Supabase was not a list. Instead got {type(response)}"
-            )
-        if len(response) != 1:
-            if len(response) == 0:
-                raise NoEntryFoundError(table, field_name, field_value)
-            else:
-                raise ValueError(
-                    f"More than one user found with {field_name} {field_value}"
-                )
-
-    def _get_obj_info(self, table: str, obj: dbc.AbstractDataTableClass) -> dict:
+        obj: dbc.AbstractDataTableClass,
+        #   assert_only_one: bool = False
+    ) -> dict:
         """Completes the information of an object from the database by searching for its unique values"""
         if not isinstance(obj, dbc.AbstractDataTableClass):
             raise ValueError(
@@ -130,18 +159,28 @@ class SupabaseClient:
                 f"Object of type {type(obj)} does not have any unique fields that can used to search for an entry"
             )
         else:
-            unique_field = unique_fields[0]
-            response = (
-                self.client.table(table)
-                .select("*")
-                .eq(unique_field, getattr(obj, unique_field))
-                .execute()
-                .data
-            )
-            self._validate_exactly_one_supabase_item(
-                response, table, unique_field, getattr(obj, unique_field)
-            )
-            return response[0]
+            if len(unique_fields) == 1:
+                attribute_name = unique_fields[0]
+                response = (
+                    self.client.table(table)
+                    .select("*")
+                    .eq(attribute_name, getattr(obj, attribute_name))
+                    .maybe_single()
+                    .execute()
+                )
+            else:
+                statements = [
+                    f"{attribute_name}.eq.{getattr(obj, attribute_name)}"
+                    for attribute_name in unique_fields
+                ]
+                response = (
+                    self.client.table(table)
+                    .select("*")
+                    .or_(",".join(statements))
+                    .maybe_single()
+                    .execute()
+                )
+        return response.data if response is not None else {}
 
     def _delete_entry(
         self, obj: dbc.AbstractDataTableClass, deletion_key: str | None = None
@@ -160,13 +199,19 @@ class SupabaseClient:
             raise ValueError(
                 f"Expected an object of type dbc.AbstractDataTableClass. Instead got {type(obj)}"
             )
-        table = self.obj_to_table[type(obj)]
+        table = self.get_table_name(type(obj))
         if deletion_key is None:
-            deletion_key = obj._unique_fields[0]
-            if getattr(obj, deletion_key) is None:
+            deletion_key = next(
+                (
+                    field
+                    for field in obj._unique_fields
+                    if getattr(obj, field) is not None
+                ),
+                None,
+            )
+            if deletion_key is None:
                 raise ValueError(
-                    f"Object of type {type(obj)} does not have a value for {deletion_key} that can be "
-                    + "used for deletion and no alternative deletion key was provided using 'deletion_key'"
+                    f"None of the unique fields in {type(obj)} have non-None values and no alternative deletion key was provided using 'deletion_key'"
                 )
         response = (
             self.client.table(table)
@@ -180,6 +225,13 @@ class SupabaseClient:
         else:
             return items_deleted
 
+    def user_exists(self, user) -> bool:
+        try:
+            self.get_user(user)
+            return True
+        except NoUserFound:
+            return False
+
     def get_user(self, data: dbc.User) -> dbc.User:
         """Completes dbc.User information by retrieving full record from the database
 
@@ -191,7 +243,26 @@ class SupabaseClient:
         Returns:
             dbc.User: The user augmented with all the information from the database
         """
-        return dbc.User(**self._get_obj_info("users", data))
+        r = self._get_obj_info("users", data)
+        if r == {}:
+            raise NoUserFound(f"User: {data} not found")
+        else:
+            return dbc.User(**r)
+
+    def get_or_create_user(self, user: dbc.User) -> dbc.User:
+        """Retrieves a user from the database. If the user does not exist, it is created.
+
+        Args:
+            user (User): The user to retrieve or create. The user must have at least one of the following fields: email, phone_number, telegram_id
+
+        Returns:
+            User: The user augmented with all the information from the database
+        """
+        try:
+            user_full = self.get_user(user)
+        except NoUserFound:
+            user_full = self.add_user(user)
+        return user_full
 
     def add_user(self, user: dbc.User) -> dbc.User:
         """Adds a user to the database
@@ -199,12 +270,9 @@ class SupabaseClient:
         Args:
             user (User): information about the user to be added. The user must have at least one of the following fields: email, phone_number, telegram_id
         """
-        duplicates = self._check_duplicates("users", user)
-        if duplicates:
-            raise DuplicateEntryError()
-        else:
-            r = self.client.table("users").insert(user.to_dict()).execute()
-            return dbc.User(**r.data[0])
+        self._check_duplicates("users", user)
+        r = self.client.table("users").insert(user.to_dict()).execute()
+        return dbc.User(**r.data[0])
 
     def add_changelog(self, changelog: dbc.Changelog) -> tuple[int, str]:
         r = self.client.table("changelog").insert(changelog.to_dict()).execute()
@@ -251,18 +319,51 @@ class SupabaseClient:
         self.client.table("users").delete().eq("user_id", user_full.user_id).execute()
         return 0, "User deleted successfully"
 
-    def get_message(self, message: dbc.Message) -> dbc.Message:
+    def get_message(
+        self, message: dbc.Message
+    ) -> dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage:
         """Completes dbc.User information by retrieving full record from the database
 
         Args:
-            data (Message): An object of type dbc.Message. The object must have at
+            message (Message): An object of type dbc.Message. The object must have at
             least one value that is unique in the database and that can be
             used to find the record.
 
         Returns:
-            dbc.User: The dbc.Message data augmented with all the information from the database
+            dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage: The dbc.Message data augmented with all the information from the database
         """
-        return dbc.Message(**self._get_obj_info("messages", message))
+        data = self._get_obj_info("messages", message)
+        messaging_platform = data.get("messaging_platform")
+
+        if messaging_platform is None:
+            filtered_data = {
+                k: v for k, v in data.items() if k in dbc.Message.__annotations__
+            }
+            return dbc.Message(**filtered_data)
+        elif messaging_platform == "WhatsApp":
+            filtered_data = {
+                k: v
+                for k, v in data.items()
+                if k
+                in {
+                    **dbc.Message.__annotations__,
+                    **dbc.WhatsappMessage.__annotations__,
+                }
+            }
+            return dbc.WhatsappMessage(**filtered_data)
+        elif messaging_platform == "Telegram":
+            filtered_data = {
+                k: v
+                for k, v in data.items()
+                if k
+                in {
+                    **dbc.Message.__annotations__,
+                    **dbc.TelegramMessage.__annotations__,
+                }
+            }
+            return dbc.TelegramMessage(**filtered_data)
+        else:
+            raise ValueError(f"Messaging platform '{messaging_platform}' not found.")
 
     def get_all_user_messages(self, user: dbc.User) -> list[dbc.Message]:
         user = self.get_user(user)
@@ -277,29 +378,39 @@ class SupabaseClient:
         message_list: list[dbc.Message] = [dbc.Message(**message) for message in data]
         return message_list
 
-    def add_message(self, msg_data: dbc.Message) -> dbc.Message:
-        duplicates = self._check_duplicates("messages", msg_data)
-        if duplicates:
-            raise DuplicateEntryError()
-        else:
-            r = self.client.table("messages").insert(msg_data.to_dict()).execute()
+    def add_message(
+        self, msg_data: dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage
+    ) -> dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage:
+        self._check_duplicates("messages", msg_data)
+        r = self.client.table("messages").insert(msg_data.to_dict()).execute()
         incoming_type = type(msg_data)
         filtered_data = {k: v for k, v in r.data[0].items() if v is not None}
         return incoming_type(**filtered_data)
 
     def update_message(
         self, msg_data: dbc.Message, msg_update: dbc.Message
-    ) -> tuple[int, str]:
-        """Updates a message in the database
+    ) -> dbc.Message:
+        """Updates a message in the database and returns the updated message object.
 
         Args:
-            msg_data (Message): The message data to update. The message data must contain the message_id
+            msg_data (Message): The message data to update. The message data must contain the message_id.
+
+        Returns:
+            dbc.Message: The updated message object.
         """
         msg_data_full = self.get_message(msg_data)
-        self.client.table("messages").update(msg_update.to_dict()).eq(
-            "message_id", msg_data_full.message_id
-        ).execute()
-        return 0, "Message updated successfully"
+        response = (
+            self.client.table("messages")
+            .update(msg_update.to_dict())
+            .eq("message_id", msg_data_full.message_id)
+            .execute()
+        )
+
+        # Assuming the response.data contains the updated message data
+        updated_message_data = response.data[0] if response.data else {}
+        return self.get_message(
+            dbc.Message(message_id=updated_message_data["message_id"])
+        )
 
     def get_file(self, data: dbc.File) -> dbc.File:
         """Completes dbc.User information by retrieving full record from the database
@@ -315,9 +426,7 @@ class SupabaseClient:
         return dbc.File(**self._get_obj_info("files", data))
 
     def add_file(self, file: dbc.File) -> dbc.File:
-        duplicates = self._check_duplicates("files", file)
-        if duplicates:
-            raise DuplicateEntryError()
+        self._check_duplicates("files", file)
         response = self.client.table("files").insert(file.to_dict()).execute()
         assert len(response.data) == 1
         file_data = response.data[0]
@@ -325,8 +434,6 @@ class SupabaseClient:
 
     def get_user_addresses(self, user: dbc.User) -> list[dbc.Address]:
         user = self.get_user(user)
-        if user.user_id is None:
-            raise ValueError("User does not have a user_id. Cannot retrieve addresses")
         response = (
             self.client.table("addresses")
             .select("*")
@@ -361,8 +468,6 @@ class SupabaseClient:
 
     def get_user_drafts(self, user: dbc.User) -> list[dbc.Draft]:
         user = self.get_user(user)
-        if user.user_id is None:
-            raise ValueError("User does not have a user_id. Cannot retrieve addresses")
         response = (
             self.client.table("drafts")
             .select("*")
@@ -445,7 +550,6 @@ class SupabaseClient:
         """Registers a message in the database
 
         Args:
-            telegram_id (str): The telegram_id of the user that sent the message
             sent_by (str): Whether the message was sent by the user or the bot
             mime_type (str): The mime_type of the message
             message (str): The message itself
@@ -539,10 +643,10 @@ class SupabaseClient:
             .execute()
         )
         if response.data == []:
-            raise NoEntryFoundError("system_messages", col_name, msg_name)
+            raise NoEntryFoundError("system_messages", "full_message_name", msg_name)
         elif len(response.data) > 1:
             raise ValueError(
-                f"More than one message found with {col_name} = {msg_name}"
+                f"More than one message found with 'full_message_name' = {msg_name}"
             )
         # encode and decode to make sure that all emojis work
         # .encode("utf-8").decode('unicode_escape')
