@@ -325,9 +325,10 @@ class Handler:
         db_client.update_message(self.handler.message, message_updated)
 
         address_formatted = msg_utils.format_address_simple(address)
+        user_first_name = " " + user.first_name if user.first_name is not None else ""
         msg = (
             db_client.get_system_message("send-success").format(
-                user.first_name, address_formatted
+                user_first_name, address_formatted
             )
             + user_warning
         )
