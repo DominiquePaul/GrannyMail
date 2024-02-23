@@ -34,8 +34,7 @@ async def test_transcript_to_letter_text(user):
 async def test_implement_letter_edits():
     old_content = "Hallo Doris, mir geht es gut!"
     edit_instructions = "1) delete 'Doris' 2) replace 'gut' with 'schlecht'"
-    edit_prompt = get_prompt_from_sheet("edit-prompt-implement_changes")
-    response = await implement_letter_edits(old_content, edit_instructions, edit_prompt)
+    response = await implement_letter_edits(old_content, edit_instructions)
     assert isinstance(response, str)
     assert "schlecht" in response
     assert "Doris" not in response

@@ -1,15 +1,12 @@
 import datetime
-import json
 import logging
-import sys
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 import sentry_sdk
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram._callbackquery import CallbackQuery
+from telegram import Update
 from telegram.ext import (
     Application,
     CallbackContext,
@@ -28,8 +25,8 @@ import grannymail.db.supaclient as supaclient
 from grannymail.db.supaclient import NoUserFound
 from grannymail.bot.command_handler import Handler
 from grannymail.bot.whatsapp import WebhookRequestData
-from grannymail.pdf_gen import create_letter_pdf_as_bytes
 from grannymail.pingen import Pingen
+from grannymail.logger import logger
 
 # import grannymail.bot.whatsapp as whatsapp
 
@@ -45,16 +42,6 @@ if cfg.SENTRY_ENDPOINT:
         # We recommend adjusting this value in production.
         profiles_sample_rate=1.0,
     )
-# set up logging
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-stream_handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter(
-    "%(asctime)s (%(name)s - %(module)s - %(levelname)s): %(message)s"
-)
-stream_handler.setFormatter(formatter)
-logger.addHandler(stream_handler)
-
 
 db_client = supaclient.SupabaseClient()
 pingen_client = Pingen()
@@ -215,10 +202,11 @@ async def verify_route(request: Request):
 @app.router.post("/api/whatsapp")
 async def webhook_route(data: WebhookRequestData):
     if data.entry[0].get("changes", [{}])[0].get("value", {}).get("statuses"):
-        logging.info("Received a WhatsApp status update.")
+        logging.info("--- WhatsApp status update received ---")
         return JSONResponse(content="ok", status_code=200)
     else:
         try:
+            logging.info("Receiving message...")
             handler = Handler(data=data)
             await handler.parse_message()
 
@@ -233,10 +221,10 @@ async def webhook_route(data: WebhookRequestData):
                     raise ValueError(
                         f"Unknown or uncallable command: {handler.handler.message.command}"
                     )
+            logging.info("Successfully handled query")
             return JSONResponse(content="ok", status_code=200)
-        except NoUserFound as e:
-            logging.error(f"No user found: {e}")
-        except:
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
             return JSONResponse(content="Internal Server Error", status_code=500)
 
 

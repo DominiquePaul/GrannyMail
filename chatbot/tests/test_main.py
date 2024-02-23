@@ -47,10 +47,13 @@ class TestBase:
             raise ValueError(
                 "Only one of expected_sheet_response or expected_response_str should be provided"
             )
+        if not expected_sheet_response and not expected_response_str:
+            raise ValueError(
+                "One of expected_sheet_response or expected_response_str must be provided"
+            )
 
-        expected_response = None
         if expected_sheet_response:
-            expected_response = [
+            expected_response: list[str] | unittest.mock._ANY = [
                 get_prompt_from_sheet(resp)
                 for resp in (
                     [expected_sheet_response]
@@ -58,24 +61,19 @@ class TestBase:
                     else expected_sheet_response
                 )
             ]
-        elif expected_response_str and not isinstance(
-            expected_response_str, unittest.mock._ANY
-        ):
+        elif isinstance(expected_response_str, unittest.mock._ANY):
+            expected_response = expected_response_str
+        elif expected_response_str:
             expected_response = (
                 expected_response_str
                 if isinstance(expected_response_str, list)
                 else [expected_response_str]
             )
 
-        if not expected_response:
-            raise ValueError(
-                "One of expected_sheet_response or expected_response_str must be provided"
-            )
-
         message = test_utils.create_whatsapp_text_message(message_body=message_body)
         with patch(patch_target, new_callable=AsyncMock) as mocked_function:
             await gm.webhook_route(message)
-            if isinstance(expected_response_str, unittest.mock._ANY):
+            if not isinstance(expected_response, list):
                 mocked_function.assert_awaited_with(expected_response)
             elif len(expected_response) == 1:
                 mocked_function.assert_awaited_with(expected_response[0])
