@@ -7,10 +7,18 @@ from rapidfuzz import fuzz
 
 from grannymail.db.classes import Address, User
 from grannymail.db.supaclient import SupabaseClient
-from grannymail.utils.utils import read_txt_file
+from grannymail.logger import logger
 
 openai_client = AsyncOpenAI()
 db_client = SupabaseClient()
+
+
+class CharactersNotSupported(Exception):
+    """Exception raised for characters not supported by the font."""
+
+    def __init__(self, message="Characters not supported"):
+        self.message = message
+        super().__init__(self.message)
 
 
 def strip_command(msg: str, command: str) -> str:
@@ -47,7 +55,7 @@ def parse_command(txt: str) -> tuple[str | None, str]:
             return txt[1:], ""
         command = txt[1:command_end_idx]
         message_text = txt[command_end_idx:].strip()
-        return command, message_text
+        return command.lower(), message_text
     else:
         return "no_command", txt
 
@@ -155,7 +163,32 @@ async def transcribe_voice_memo(voice_bytes: bytes, duration: float) -> str:
         # if duration takes unexpectedly long we don't want to deadlock the execution
         timeout=0.75 * duration,
     )
+    logger.info(f"Transcribed text: {transcript.text}")
     return transcript.text
+
+
+def is_supported_by_times_new_roman(s):
+    """
+    Checks if all characters in the string are likely to be supported by Times New Roman.
+    This function checks against a broad approximation of character ranges known to be supported.
+
+    Parameters:
+    - s: A string to be checked.
+
+    Returns:
+    - True if all characters are within supported ranges, False otherwise.
+    """
+    supported_ranges = [
+        ("\u0020", "\u007E"),  # Basic ASCII
+        ("\u00A0", "\u00FF"),  # Latin-1 Supplement
+        ("\u0100", "\u017F"),  # Latin Extended-A
+        ("\u0180", "\u024F"),  # Latin Extended-B (partial)
+        ("\u0370", "\u03FF"),  # Greek and Coptic
+        ("\u0400", "\u04FF"),  # Cyrillic
+        # Add more ranges as needed
+    ]
+
+    return all(any(start <= c <= end for start, end in supported_ranges) for c in s)
 
 
 async def transcript_to_letter_text(transcript: str, user: User) -> str:
@@ -186,7 +219,13 @@ async def transcript_to_letter_text(transcript: str, user: User) -> str:
         # 5 tokens per second, assumed mean character length of 4 per token
         timeout=30,  # len(final_prompt)/(4*5),
     )
-    return completion.choices[0].message.content  # type: ignore
+    transcript = completion.choices[0].message.content
+    # check whether we only have latin letters
+    if not is_supported_by_times_new_roman(transcript):
+        raise CharactersNotSupported(
+            f"The transcribed text contains non-Latin characters: '{transcript}'"
+        )
+    return transcript  # type: ignore
 
 
 async def implement_letter_edits(

@@ -71,12 +71,19 @@ class Handler:
         if self.handler.message.transcript is None:
             raise NoTranscriptFound("Transcript is None")
 
-        letter_text = await msg_utils.transcript_to_letter_text(
-            self.handler.message.transcript, user
-        )  # type: ignore
+        try:
+            letter_text = await msg_utils.transcript_to_letter_text(
+                self.handler.message.transcript, user
+            )  # type: ignore
+        except msg_utils.CharactersNotSupported as e:
+            # send a message back to the user
+            await self.handler.send_message(
+                db_client.get_system_message("voice-error-characters_not_supported")
+            )
+            return None
         draft_bytes = pdf_gen.create_letter_pdf_as_bytes(letter_text)
 
-        db_client.register_draft(
+        draft_info = db_client.register_draft(
             dbc.Draft(user_id=self.handler.message.safe_user_id, text=letter_text),
             draft_bytes,
         )

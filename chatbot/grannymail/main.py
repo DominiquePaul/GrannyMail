@@ -1,10 +1,10 @@
+import stripe
 import datetime
-import logging
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import JSONResponse
 from telegram import Update
 from telegram.ext import (
@@ -189,6 +189,37 @@ job_queue.run_daily(
 )
 
 
+@app.post("/webhook/stripe")
+async def webhook(request: Request):
+    event = None
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, cfg.STRIPE_ENDPOINT_SECRET
+        )
+    except ValueError as e:
+        # Invalid payload
+        return JSONResponse(content={"error": str(e)}, status_code=400)
+    except stripe.error.SignatureVerificationError as e:  # type: ignore
+        # Invalid signature
+        return JSONResponse(content={"error": str(e)}, status_code=400)
+
+    # Process the event
+    if event["type"] == "checkout.session.completed":
+        checkout_info = event["data"]["object"]
+        payment_reference_id = checkout_info.get("client_reference_id")
+        # get user based on reference id
+        # user = ...
+        optional_name = " (Julius Hildebrand)"
+        logger.info("Payment received for user with phone {}{optional_name} for {}")
+
+    print(f"Received event: {event['type']}")
+    # Response to Stripe that the webhook was received successfully
+    return JSONResponse(content={"message": "Webhook received!"}, status_code=200)
+
+
 ####################
 # --- Whatsapp --- #
 ####################
@@ -202,11 +233,11 @@ async def verify_route(request: Request):
 @app.router.post("/api/whatsapp")
 async def webhook_route(data: WebhookRequestData):
     if data.entry[0].get("changes", [{}])[0].get("value", {}).get("statuses"):
-        logging.info("--- WhatsApp status update received ---")
+        logger.info("--- WhatsApp status update received ---")
         return JSONResponse(content="ok", status_code=200)
     else:
         try:
-            logging.info("Receiving message...")
+            logger.info("Receiving message...")
             handler = Handler(data=data)
             await handler.parse_message()
 
@@ -221,10 +252,10 @@ async def webhook_route(data: WebhookRequestData):
                     raise ValueError(
                         f"Unknown or uncallable command: {handler.handler.message.command}"
                     )
-            logging.info("Successfully handled query")
+            logger.info("Successfully handled query")
             return JSONResponse(content="ok", status_code=200)
         except Exception as e:
-            logging.error(f"An error occurred: {e}")
+            logger.error(f"An error occurred: {e}")
             return JSONResponse(content="Internal Server Error", status_code=500)
 
 

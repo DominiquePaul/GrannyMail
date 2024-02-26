@@ -70,6 +70,7 @@ stack-data==0.6.3
 starlette==0.36.3
 storage3==0.7.0
 StrEnum==0.4.15
+stripe==8.4.0
 supabase==2.3.5
 supafunc==0.3.3
 tinytag==1.10.1

@@ -788,3 +788,29 @@ class TestWhatsapp(TestBase):
             else:
                 expected_text = get_prompt_from_sheet("send_callback-cancel")
             mock_send_message.assert_awaited_once_with(expected_text)
+
+    @pytest.mark.asyncio
+    async def test_voice_memo_non_latin_alphabet(self, user, dbclient, wa_voice_memo):
+        async def _download_media(*args, **kwargs):
+            with open("tests/test_data/example_voice_memo.ogg", "rb") as f:
+                return f.read()
+
+        with patch(
+            "grannymail.bot.whatsapp.WhatsappHandler.send_message",
+            new_callable=AsyncMock,
+        ) as mock_send_message, patch(
+            "grannymail.bot.whatsapp.WhatsappHandler.send_document",
+            new_callable=AsyncMock,
+        ) as mock_send_document, patch(
+            "grannymail.utils.message_utils.transcribe_voice_memo",
+            new_callable=AsyncMock,
+        ) as transcribe_voice_memo, patch(
+            "grannymail.bot.whatsapp.WhatsappHandler._download_media",
+            new=_download_media,
+        ):
+            transcribe_voice_memo.return_value = "チャンネル登録をお願いいたします"
+
+            await gm.webhook_route(wa_voice_memo)
+            assert mock_send_message.call_args_list[1] == call(
+                get_prompt_from_sheet("voice-error-characters_not_supported")
+            )
