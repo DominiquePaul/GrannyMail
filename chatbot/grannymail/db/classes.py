@@ -142,7 +142,7 @@ class TelegramMessage(Message):
 @dataclass
 class WhatsappMessage(Message):
     _unique_fields: list[str] = field(
-        default_factory=lambda: ["message_id", "wa_mid"], kw_only=True
+        default_factory=lambda: ["message_id"], kw_only=True
     )
     wa_mid: str | None = None
     wa_webhook_id: str | None = None
