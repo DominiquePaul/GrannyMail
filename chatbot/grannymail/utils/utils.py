@@ -69,8 +69,3 @@ def get_prompt_from_sheet(
             f"Found multiple prompts with name {prompt_name} in spreadsheet"
         )
     return df_subset.iloc[0]
-
-
-# def get_messages_as_dict(column_name="version_main"):
-#     df = get_message_spreadsheet()
-#     return df.set_index('full_message_name')[column_name].to_dict()

@@ -15,3 +15,10 @@ def test_get_prompt_from_sheet():
     prompt = get_prompt_from_sheet("help-success")
     assert isinstance(prompt, str)
     assert len(prompt) > 10
+
+
+def message_id_generator(start=11111):
+    current = start
+    while True:
+        yield current
+        current += 1

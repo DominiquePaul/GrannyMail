@@ -6,11 +6,7 @@ from supabase import Client, create_client  # type: ignore
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
 from grannymail.utils.utils import get_message_spreadsheet
-
-
-class NoUserFound(Exception):
-    def __init__(self, message):
-        super().__init__(message)
+from grannymail.logger import logger
 
 
 class TableName(Enum):
@@ -107,39 +103,6 @@ class SupabaseClient:
         if duplicated_values:
             raise DuplicateEntryError(duplicated_values)
 
-    # def _validate_exactly_one_supabase_item(
-    #     self,
-    #     response: list,
-    #     table: str,
-    #     field_name: str,
-    #     field_value: str | float | int,
-    # ) -> None:
-    #     """Checks that the response from Supabase is valid.
-
-    #     This means that a single entry was found with the given field_name and field_value
-
-    #     Args:
-    #         response (list): _description_
-    #         field_name (str): _description_
-    #         field_value (str | float | int): _description_
-
-    #     Raises:
-    #         ValueError: If the response is not a list. For example if there is an error in the query
-    #         NoEntryFoundError: No entry found in the database for searching for {key} = {data}
-    #         ValueError: Multiple entries found with {key} = {data}
-    #     """
-    #     if not isinstance(response, list):
-    #         raise ValueError(
-    #             f"Response from Supabase was not a list. Instead got {type(response)}"
-    #         )
-    #     if len(response) != 1:
-    #         if len(response) == 0:
-    #             raise NoEntryFoundError(table, field_name, field_value)
-    #         else:
-    #             raise ValueError(
-    #                 f"More than one user found with {field_name} {field_value}"
-    #             )
-
     def _get_obj_info(
         self,
         table: str,
@@ -180,7 +143,12 @@ class SupabaseClient:
                     .maybe_single()
                     .execute()
                 )
-        return response.data if response is not None else {}
+        if response is None:
+            keys = "(" + ", ".join(unique_fields) + ")"
+            data = "(" + ", ".join([getattr(obj, k) for k in unique_fields]) + ")"
+            raise NoEntryFoundError(table, keys, data)
+        else:
+            return response.data
 
     def _delete_entry(
         self, obj: dbc.AbstractDataTableClass, deletion_key: str | None = None
@@ -229,7 +197,7 @@ class SupabaseClient:
         try:
             self.get_user(user)
             return True
-        except NoUserFound:
+        except NoEntryFoundError:
             return False
 
     def get_user(self, data: dbc.User) -> dbc.User:
@@ -244,10 +212,7 @@ class SupabaseClient:
             dbc.User: The user augmented with all the information from the database
         """
         r = self._get_obj_info("users", data)
-        if r == {}:
-            raise NoUserFound(f"User: {data} not found")
-        else:
-            return dbc.User(**r)
+        return dbc.User(**r)
 
     def get_or_create_user(self, user: dbc.User) -> dbc.User:
         """Retrieves a user from the database. If the user does not exist, it is created.
@@ -260,7 +225,7 @@ class SupabaseClient:
         """
         try:
             user_full = self.get_user(user)
-        except NoUserFound:
+        except NoEntryFoundError:
             user_full = self.add_user(user)
         return user_full
 
@@ -309,7 +274,7 @@ class SupabaseClient:
         ).execute()
         return 0, "User updated successfully"
 
-    def delete_user(self, user: dbc.User) -> tuple[int, str]:
+    def delete_user(self, user: dbc.User) -> tuple[int, str] | None:
         """Deletes a user from the database
 
         Args:
@@ -365,6 +330,14 @@ class SupabaseClient:
         else:
             raise ValueError(f"Messaging platform '{messaging_platform}' not found.")
 
+    def maybe_get_message(
+        self, message: dbc.Message
+    ) -> dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage | None:
+        try:
+            return self.get_message(message)
+        except NoEntryFoundError:
+            return None
+
     def get_all_user_messages(self, user: dbc.User) -> list[dbc.Message]:
         user = self.get_user(user)
         response = (
@@ -378,9 +351,7 @@ class SupabaseClient:
         message_list: list[dbc.Message] = [dbc.Message(**message) for message in data]
         return message_list
 
-    def add_message(
-        self, msg_data: dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage
-    ) -> dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage:
+    def add_message(self, msg_data: dbc.MessageType) -> dbc.MessageType:
         self._check_duplicates("messages", msg_data)
         r = self.client.table("messages").insert(msg_data.to_dict()).execute()
         incoming_type = type(msg_data)
@@ -398,11 +369,11 @@ class SupabaseClient:
         Returns:
             dbc.Message: The updated message object.
         """
-        msg_data_full = self.get_message(msg_data)
+        msg_full = self.get_message(msg_data)
         response = (
             self.client.table("messages")
             .update(msg_update.to_dict())
-            .eq("message_id", msg_data_full.message_id)
+            .eq("message_id", msg_full.message_id)
             .execute()
         )
 
@@ -572,19 +543,20 @@ class SupabaseClient:
     def get_draft(self, draft: dbc.Draft) -> dbc.Draft:
         return dbc.Draft(**self._get_obj_info("drafts", draft))
 
-    def add_order(self, order: dbc.Order):
-        for field in ["user_id", "draft_id", "address_id", "blob_path"]:
+    def add_order(self, order: dbc.Order) -> dbc.Order:
+        for field in [
+            "user_id",
+            "draft_id",
+            "address_id",
+        ]:
             if getattr(order, field) is None:
                 raise ValueError(f"Order does not have a {field}. Cannot add order")
-        duplicates = self._check_duplicates("orders", order)
-        if duplicates:
-            return 1, f"A existing user was already found with {', '.join(duplicates)}"
-        else:
-            r = self.client.table("orders").insert(order.to_dict()).execute()
-            return 0, "Order added successfully"
+        self._check_duplicates("orders", order)
+        r = self.client.table("orders").insert(order.to_dict()).execute()
+        return dbc.Order(**r.data[0])
 
-    def get_order(self, order: dbc.Order):
-        self._get_obj_info("orders", order)
+    def get_order(self, order: dbc.Order) -> dbc.Order:
+        return dbc.Order(**self._get_obj_info("orders", order))
 
     def register_draft(self, draft: dbc.Draft, pdf_bytes: bytes) -> dbc.Draft:
         if draft.user_id is None:
@@ -648,11 +620,11 @@ class SupabaseClient:
             raise ValueError(
                 f"More than one message found with 'full_message_name' = {msg_name}"
             )
-        # encode and decode to make sure that all emojis work
-        # .encode("utf-8").decode('unicode_escape')
         return response.data[0][col_name]
 
-    def get_last_user_message(self, user: dbc.User) -> dbc.Message:
+    def get_last_user_message(
+        self, user: dbc.User, messaging_platform: str | None = None
+    ) -> dbc.Message | dbc.TelegramMessage | dbc.WhatsappMessage:
         """Returns the last message sent by the user
 
         Args:
@@ -662,16 +634,43 @@ class SupabaseClient:
             dbc.Message: The last message sent by the user
         """
         user = self.get_user(user)
-        response = (
-            self.client.table("messages")
-            .select("*")
-            .eq("user_id", user.user_id)
-            .order("timestamp", desc=True)
-            .execute()
-        )
+        query = self.client.table("messages").select("*").eq("user_id", user.user_id)
+        if isinstance(messaging_platform, str):
+            if messaging_platform in ["whatsapp", "telegram"]:
+                query = query.eq("messaging_platform", messaging_platform)
+            else:
+                error_msg = f"Platform {messaging_platform} not known"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+        response = query.order("timestamp", desc=True).execute()
         data = response.data
         if len(data) == 0:
             assert user.user_id is not None
             raise NoEntryFoundError("messages", "user_id", str(user.user_id))
         else:
             return dbc.Message(**data[0])
+
+    def create_order_from_message(
+        self, draft: dbc.Draft, message_id, payment_type: str, status: str
+    ) -> dbc.Order:
+        order = dbc.Order(
+            user_id=draft.user_id,
+            draft_id=draft.draft_id,
+            address_id=draft.address_id,
+            message_id=message_id,
+            status=status,
+            payment_type=payment_type,
+        )
+        return self.add_order(order)
+
+    def update_order(self, order: dbc.Order, order_update: dbc.Order) -> dbc.Order:
+        order_full = self.get_order(order)
+        response = (
+            self.client.table("orders")
+            .update(order_update.to_dict())
+            .eq("order_id", order_full.order_id)
+            .execute()
+        )
+        # Assuming the response.data contains the updated message data
+        updated_order_data = response.data[0] if response.data else {}
+        return self.get_order(dbc.Order(order_id=updated_order_data["order_id"]))

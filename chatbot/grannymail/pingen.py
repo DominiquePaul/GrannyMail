@@ -6,6 +6,29 @@ import uuid
 import requests
 
 import grannymail.config as cfg
+import grannymail.db.classes as dbc
+from grannymail.db.supaclient import SupabaseClient
+
+dbclient = SupabaseClient()
+
+
+def dispatch_order(order_id: str) -> dbc.Order:
+    # create an order and send letter
+    pingen_client = Pingen()
+    order = dbclient.get_order(dbc.Order(order_id=order_id))
+    user = dbclient.get_user(dbc.User(user_id=order.user_id))
+
+    # download the draft pdf as bytes
+    letter_name = f"letter_{user.first_name}_{user.last_name}_{str(datetime.datetime.utcnow())}.pdf"
+    draft = dbclient.get_draft(dbc.Draft(draft_id=order.draft_id))
+    if draft.address_id is None:
+        raise ValueError(f"Draft {draft.draft_id} has no address")
+
+    letter_bytes = dbclient.download_draft(draft)
+
+    pingen_client.upload_and_send_letter(letter_bytes, file_name=letter_name)
+    order.status = "transferred"
+    return dbclient.update_order(order, order)
 
 
 class Pingen:

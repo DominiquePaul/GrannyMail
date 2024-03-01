@@ -22,11 +22,12 @@ import grannymail.bot.whatsapp as whatsapp
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
 import grannymail.db.supaclient as supaclient
-from grannymail.db.supaclient import NoUserFound
 from grannymail.bot.command_handler import Handler
 from grannymail.bot.whatsapp import WebhookRequestData
+import grannymail.bot.utils as bot_utils
 from grannymail.pingen import Pingen
 from grannymail.logger import logger
+import grannymail.stripe_payments as sp
 
 # import grannymail.bot.whatsapp as whatsapp
 
@@ -90,32 +91,32 @@ async def job_update_system_messages(context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def handle_no_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_no_command()
 
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_help()
 
 
 async def handle_report_bug(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_report_bug()
 
 
 async def handle_edit_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_edit_prompt()
 
 
 async def handle_show_address_book(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_show_address_book()
 
 
@@ -123,40 +124,40 @@ async def handle_add_address(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> dbc.Message | None:
     # missing: check that message isnt empty
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     return await handler.handle_add_address()
 
 
 async def handle_delete_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     return await handler.handle_delete_address()
 
 
 async def handle_voice(update: Update, context: CallbackContext):
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_voice()
 
 
 async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     await handler.handle_edit()
 
 
 async def handle_send(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> dbc.Message | None:
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     return await handler.handle_send()
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    handler = Handler(update, context)
-    await handler.parse_message()
+    handler = Handler(handler_type="Telegram")
+    await handler.parse_message(update, context)
     command = handler.handler.message.command
     if command is not None:
         command_method_name = f"handle_{command}"
@@ -205,17 +206,27 @@ async def webhook(request: Request):
     except stripe.error.SignatureVerificationError as e:  # type: ignore
         # Invalid signature
         return JSONResponse(content={"error": str(e)}, status_code=400)
+    logger.info(f"Stripe webhook: Received event: {event['type']}")
 
-    # Process the event
-    if event["type"] == "checkout.session.completed":
-        checkout_info = event["data"]["object"]
-        payment_reference_id = checkout_info.get("client_reference_id")
-        # get user based on reference id
-        # user = ...
-        optional_name = " (Julius Hildebrand)"
-        logger.info("Payment received for user with phone {}{optional_name} for {}")
+    try:
+        message_body, user_id, messaging_platform = sp.handle_event(event)
+    except ValueError as e:
+        logger.error(f"Error handling Stripe event: {e}")
+        return JSONResponse(
+            content={"error": "An error occurred while processing the event."},
+            status_code=500,
+        )
+    try:
+        await bot_utils.send_message(message_body, user_id, messaging_platform)
+    except ValueError as e:
+        logger.error(
+            f"Error sending message to user after stripe webhook. Maybe the last message is too far ago to send message: {e}"
+        )
+        return JSONResponse(
+            content={"error": "An error occurred while processing the event."},
+            status_code=500,
+        )
 
-    print(f"Received event: {event['type']}")
     # Response to Stripe that the webhook was received successfully
     return JSONResponse(content={"message": "Webhook received!"}, status_code=200)
 
@@ -238,16 +249,19 @@ async def webhook_route(data: WebhookRequestData):
     else:
         try:
             logger.info("Receiving message...")
-            handler = Handler(data=data)
-            await handler.parse_message()
+            handler = Handler(handler_type="WhatsApp")
+            await handler.parse_message(data=data)
 
             # Dynamically call the command method based on the command name
             command = handler.handler.message.command
             if command is not None:
                 command_method_name = f"handle_{command}"
                 command_method = getattr(handler, command_method_name, None)
-                if command_method and callable(command_method):
-                    await command_method()
+                if command:
+                    if callable(command_method):
+                        await command_method()
+                    else:
+                        await handler.handle_commmand_not_recognised()
                 else:
                     raise ValueError(
                         f"Unknown or uncallable command: {handler.handler.message.command}"

@@ -1,14 +1,14 @@
-import datetime
+import typing as t
 from grannymail.db import classes as dbc
 import grannymail.db.supaclient as supaclient
 from grannymail.bot.telegram import TelegramHandler
 from grannymail.bot.whatsapp import WhatsappHandler
 import grannymail.utils.message_utils as msg_utils
 import grannymail.pdf_gen as pdf_gen
-from grannymail.pingen import Pingen
+import grannymail.pingen as pingen
+import grannymail.stripe_payments as stripe_payments
 
 db_client = supaclient.SupabaseClient()
-pingen_client = Pingen()
 
 
 class NoTranscriptFound(Exception):
@@ -17,18 +17,27 @@ class NoTranscriptFound(Exception):
 
 
 class Handler:
-    def __init__(self, update=None, context=None, data=None):
+    handler: t.Union[WhatsappHandler, TelegramHandler]
+
+    def __init__(self, handler_type: str):
+        if handler_type == "WhatsApp":
+            self.handler = WhatsappHandler()
+        elif handler_type == "Telegram":
+            self.handler = TelegramHandler()
+        else:
+            raise ValueError("Handler type not supported")
+
+    async def parse_message(self, update=None, context=None, data=None):
         if update is not None and context is not None and data is None:
-            self.handler = TelegramHandler(update, context)
+            assert isinstance(self.handler, TelegramHandler)
+            await self.handler.parse_message(update, context)
         elif update is None and context is None and data is not None:
-            self.handler = WhatsappHandler(data)
+            assert isinstance(self.handler, WhatsappHandler)
+            await self.handler.parse_message(data)
         else:
             raise ValueError(
                 "Either both update and context OR request must be provided, but not both sets together."
             )
-
-    async def parse_message(self):
-        await self.handler.parse_message()
 
     async def handle_no_command(self):
         message_body = db_client.get_system_message("no_command-success")
@@ -188,10 +197,13 @@ class Handler:
             original_message = db_client.get_message(
                 dbc.Message(message_id=response_to_original_message.response_to)
             )
+            assert (
+                original_message is not None
+            ), "Original message retrieved in address callback is None"
             # parse the address from the original message and add it to DB
             address: dbc.Address = msg_utils.parse_new_address(
                 original_message.safe_message_body
-            )  # type: ignore
+            )
             address.user_id = self.handler.message.user_id
             db_client.add_address(address)
             response_msg = db_client.get_system_message("add_address_callback-confirm")
@@ -327,55 +339,70 @@ class Handler:
 
         # update the user message in the DB with the draft id so we can retrieve the draft
         # later in the callback response without ambuiguity
+
+        payment_type = "credits" if user.num_letter_credits > 0 else "direct"
+        order = db_client.create_order_from_message(
+            draft,
+            message_id=self.handler.message.message_id,
+            status="payment_pending",
+            payment_type=payment_type,
+        )
         message_updated = self.handler.message.copy()
         message_updated.draft_referenced = draft.draft_id
+        message_updated.order_referenced = order.order_id
         db_client.update_message(self.handler.message, message_updated)
+        self.handler.message.draft_referenced = draft.draft_id
+        self.handler.message.order_referenced = order.order_id
 
-        address_formatted = msg_utils.format_address_simple(address)
-        user_first_name = " " + user.first_name if user.first_name is not None else ""
-        msg = (
-            db_client.get_system_message("send-success").format(
-                user_first_name, address_formatted
-            )
-            + user_warning
-        )
-        option_confirm = db_client.get_system_message("send-option-confirm_sending")
-        option_cancel = db_client.get_system_message("send-option-cancel_sending")
         await self.handler.send_document(
             draft_bytes, filename="final_letter.pdf", mime_type="application/pdf"
         )
-        return await self.handler.send_message_confirmation_request(
-            main_msg=msg, cancel_msg=option_cancel, confirm_msg=option_confirm
-        )
+
+        if payment_type == "credits":
+            address_formatted = msg_utils.format_address_simple(address)
+            user_first_name = (
+                " " + user.first_name if user.first_name is not None else ""
+            )
+            msg = (
+                db_client.get_system_message("send-success-credits").format(
+                    user.num_letter_credits, user_first_name, address_formatted
+                )
+                + user_warning
+            )
+            option_confirm = db_client.get_system_message("send-option-confirm_sending")
+            option_cancel = db_client.get_system_message("send-option-cancel_sending")
+            return await self.handler.send_message_confirmation_request(
+                main_msg=msg, cancel_msg=option_cancel, confirm_msg=option_confirm
+            )
+        elif payment_type == "direct":
+            assert order.order_id is not None
+            stripe_link_single_credit = stripe_payments.get_formated_stripe_link(
+                num_credits=1, client_reference_id=order.order_id, one_off=True
+            )
+            msg = (
+                db_client.get_system_message("send-success-one_off").format(
+                    stripe_link_single_credit
+                )
+                + user_warning
+            )
+            return await self.handler.send_message(msg)
+        else:
+            raise ValueError(f"Payment type {payment_type} not recognized")
 
     async def handle_send_callback(self):
         if self.handler.message.action_confirmed:
             # fetch the reply to the original message that contained the address
-            response_to_original_message = db_client.get_message(
+            original_message = db_client.get_message(
                 dbc.Message(message_id=self.handler.message.response_to)
             )
-            user = db_client.get_user(dbc.User(self.handler.message.safe_user_id))
-            # fetch the original draft of the original /send message
-            draft_id = db_client.get_message(
-                dbc.Message(message_id=response_to_original_message.response_to)
-            ).draft_referenced
-            draft = db_client.get_draft(dbc.Draft(draft_id=draft_id))
-
-            # download the draft pdf as bytes
-            letter_name = f"letter_{user.first_name}_{user.last_name}_{str(datetime.datetime.utcnow())}.pdf"
-            letter_bytes = db_client.download_draft(draft)
-
-            # create an order and send letter
-            order = dbc.Order(
-                user_id=user.user_id,
-                draft_id=draft.draft_id,
-                address_id=draft.address_id,
-                blob_path=draft.blob_path,
-            )
-            db_client.add_order(order)
-            pingen_client.upload_and_send_letter(letter_bytes, file_name=letter_name)
+            assert original_message.order_referenced is not None
+            pingen.dispatch_order(order_id=original_message.order_referenced)
             response_msg = db_client.get_system_message("send_callback-confirm")
 
         else:
             response_msg = db_client.get_system_message("send_callback-cancel")
         await self.handler.edit_or_send_message(response_msg)
+
+    async def handle_commmand_not_recognised(self):
+        message_body = db_client.get_system_message("commmand_not_recognised-success")
+        await self.handler.send_message(message_body)

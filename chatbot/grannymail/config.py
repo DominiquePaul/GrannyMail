@@ -39,3 +39,7 @@ SENTRY_ENDPOINT = os.getenv("SENTRY_ENDPOINT", None)
 
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 STRIPE_ENDPOINT_SECRET = os.environ["STRIPE_ENDPOINT_SECRET"]
+
+STRIPE_LINK_SINGLE_PAYMENT = "https://buy.stripe.com/test_5kAaIy5FJ9gUes05kl"
+STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/test_dR66si4BFeBefw47sv"
+STRIPE_LINK_10_CREDITS = "https://buy.stripe.com/test_00gdUK6JN2SwgA83cg"

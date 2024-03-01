@@ -3,7 +3,7 @@ from dataclasses import asdict
 import pytest
 
 from grannymail.db.classes import Address, Draft, User
-from grannymail.db.supaclient import NoUserFound
+from grannymail.db.supaclient import NoEntryFoundError
 from grannymail.utils.utils import get_prompt_from_sheet
 
 
@@ -20,6 +20,7 @@ class TestUser:
             "last_name": "test_Paul",
             "email": "test@dom.com",
             "telegram_id": "dominique_paul",
+            "num_letter_credits": 0,
         }
         assert expected == user.to_dict()
 
@@ -48,7 +49,7 @@ def test_add_user(dbclient):
 
     # Delete and verify deletion of the user
     dbclient.delete_user(user_to_add)
-    with pytest.raises(NoUserFound):
+    with pytest.raises(NoEntryFoundError):
         dbclient.get_user(User(telegram_id="mike_tyson"))
 
 

@@ -40,9 +40,7 @@ def fastapi_verify(request: Request):
 
 
 class WhatsappHandler:
-    def __init__(self, data: WebhookRequestData):
-        self.data = data
-
+    def __init__(self):
         self.WHATSAPP_TOKEN = cfg.WHATSAPP_TOKEN
         self.WHATSAPP_API_VERSION = cfg.WHATSAPP_API_VERSION
         self.WHATSAPP_PHONE_NUMBER_ID = cfg.WHATSAPP_PHONE_NUMBER_ID
@@ -136,8 +134,8 @@ class WhatsappHandler:
             tag = TinyTag.get(tmp_file.name)
             return float(tag.duration) if tag.duration else 0
 
-    async def parse_message(self):
-        values = self.data.entry[0]["changes"][0]["value"]
+    async def parse_message(self, data: WebhookRequestData):
+        values = data.entry[0]["changes"][0]["value"]
         wa_message = values["messages"][0]
         user = db_client.get_or_create_user(
             dbc.User(phone_number=values["contacts"][0]["wa_id"])
@@ -151,7 +149,7 @@ class WhatsappHandler:
             ).strftime("%Y-%m-%d %H:%M:%S.%f"),
             "message_type": wa_message["type"],
             "wa_mid": wa_message["id"],
-            "wa_webhook_id": self.data.entry[0]["id"],
+            "wa_webhook_id": data.entry[0]["id"],
             "wa_phone_number_id": values["metadata"]["phone_number_id"],
             "wa_profile_name": values["contacts"][0]["profile"]["name"],
         }
@@ -231,14 +229,11 @@ class WhatsappHandler:
             raise ValueError(f"Unsupported message type: '{wa_message['type']}'")
 
         # Create and add message to database
-        message = dbc.WhatsappMessage(**message_data)
-        message = db_client.add_message(message)
+        self.message = db_client.add_message(dbc.WhatsappMessage(**message_data))
 
         # Special handling for voice messages
         if message_data["message_type"] == "audio" and media_bytes is not None:
-            db_client.register_voice_message(media_bytes, message)
-
-        self.message = message
+            db_client.register_voice_message(media_bytes, self.message)
 
     async def send_message(self, message_body: str):
         """
@@ -264,13 +259,14 @@ class WhatsappHandler:
         url = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(url, data=data)
 
-        system_message = db_client.add_message(
+        system_reply = db_client.add_message(
             dbc.WhatsappMessage(
                 user_id=self.message.user_id,
                 sent_by="system",
                 message_body=message_body,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="text",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
@@ -278,7 +274,7 @@ class WhatsappHandler:
             )
         )
 
-        return r
+        return system_reply
 
     async def _upload_media(
         self, file_data: bytes, file_name: str, mime_type: str
@@ -304,7 +300,7 @@ class WhatsappHandler:
 
     async def send_document(
         self, file_data: bytes, filename: str, mime_type: str
-    ) -> dict:
+    ) -> dbc.Message:
         """
         Sends a document to the specified recipient on WhatsApp.
 
@@ -327,13 +323,14 @@ class WhatsappHandler:
         }
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(endpoint, data=data)
-        db_client.add_message(
+        system_reply = db_client.add_message(
             dbc.WhatsappMessage(
                 user_id=self.message.user_id,
                 sent_by="system",
                 attachment_mime_type=mime_type,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="document",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
@@ -341,7 +338,7 @@ class WhatsappHandler:
                 wa_media_id=media_id,
             )
         )
-        return r
+        return system_reply
 
     async def send_message_confirmation_request(
         self, main_msg: str, cancel_msg: str, confirm_msg: str
@@ -379,13 +376,14 @@ class WhatsappHandler:
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(endpoint, data=data)
 
-        system_message = db_client.add_message(
+        system_reply = db_client.add_message(
             dbc.WhatsappMessage(
                 user_id=self.message.user_id,
                 sent_by="system",
                 message_body=main_msg,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="text",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
@@ -393,182 +391,7 @@ class WhatsappHandler:
             )
         )
 
-        return system_message
+        return system_reply
 
     async def edit_or_send_message(self, message_body: str):
         await self.send_message(message_body)
-
-
-# async def process_webhook_data(data: WebhookRequestData) -> WamBase | None:
-#     if data.entry[0].get("changes", [{}])[0].get("value", {}).get("statuses"):
-#         logging.info("Received a WhatsApp status update.")
-#         return None
-#     # if not a status update
-#     try:
-#         if is_valid_whatsapp_message(data):
-#             wam = await parse_whatsapp_message(data)
-#             return wam
-#         else:
-#             # if the request is not a WhatsApp API event, return an error
-#             raise HTTPException(status_code=404, detail="Not a WhatsApp API event")
-#     except json.JSONDecodeError:
-#         logging.error("Failed to decode JSON")
-#         raise HTTPException(status_code=400, detail="Invalid JSON provided")
-
-
-# def is_valid_whatsapp_message(body: WebhookRequestData) -> bool:
-#     """
-#     Validates the structure of the incoming webhook event to ensure it contains a WhatsApp message.
-
-#     Args:
-#         body (WebhookRequestData): The incoming webhook request data.
-
-#     Returns:
-#         bool: True if the message structure is valid, False otherwise.
-#     """
-#     try:
-#         return bool(body.entry[0]["changes"][0]["value"]["messages"][0])
-#     except (IndexError, KeyError):
-#         return False
-
-
-# async def parse_whatsapp_message(body: WebhookRequestData) -> WamBase:
-#     """
-#     Parse the incoming webhook request data and return an instance of WamBase or WamMediaType.
-
-#     This function extracts the necessary information from the webhook request data to
-#     instantiate and return a WamBase dataclass object for text messages or a WamMediaType
-#     dataclass object for media messages (audio, document, image). If the message type is
-#     unsupported, it raises a ValueError.
-
-#     Args:
-#         body (WebhookRequestData): The incoming webhook request data.
-
-#     Returns:
-#         WamBase: An instance of WamBase for text messages.
-#         WamMediaType: An instance of WamMediaType for media messages.
-#     """
-#     values = body.entry[0]["changes"][0]["value"]
-#     message = values["messages"][0]
-#     wam_data = {
-#         "webhook_id": body.entry[0]["id"],
-#         "wamid": message["id"],
-#         "wa_phone_number_id": values["metadata"]["phone_number_id"],
-#         "phone_number": values["contacts"][0]["wa_id"],
-#         "profile_name": values["contacts"][0]["profile"]["name"],
-#         "message_type": message["type"],
-#         "timestamp": message["timestamp"],
-#     }
-
-#     if message.get("context"):
-#         wam_data.update(
-#             {
-#                 "reference_wamid": message["context"]["id"],
-#                 "reference_message_user_phone": message["context"]["from"],
-#             }
-#         )
-#     if message["type"] == "text":
-#         wam_data["message_body"] = message["text"]["body"]
-#     elif message["type"] in ["audio", "document", "image"]:
-#         wam_data.update(
-#             {
-#                 "mime_type": message[message["type"]]["mime_type"],
-#                 "media_id": message[message["type"]]["id"],
-#             }
-#         )
-#         wam_media = WamMediaType(**wam_data)
-#         wam_media.media_bytes = await _download_media(wam_media.media_id)
-#         return wam_media
-#     else:
-#         raise ValueError(f"Unsupported message type: '{message['type']}'")
-
-#     return WamBase(**wam_data)
-
-
-# async def send_message(recipient_id: str, message: str) -> dict:
-#     """
-#     Send a text message to the recipient.
-
-#     This function constructs a message with the given recipient_id and message,
-#     sends the message to the recipient, and returns the JSON content of the response.
-
-#     Args:
-#         recipient_id (str): The ID of the recipient to send the message to.
-#         message (str): The message to send.
-
-#     Returns:
-#         dict: The JSON content of the response.
-#     """
-#     data = {
-#         "messaging_product": "whatsapp",
-#         "recipient_type": "individual",
-#         "to": recipient_id,
-#         "type": "text",
-#         "text": {"preview_url": False, "body": message},
-#     }
-#     url = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-#     return await _post_httpx_request(url, data=data)
-
-
-# async def send_quick_reply_message(
-#     recipient_id: str, message: str, buttons: list[str]
-# ) -> dict:
-#     """
-#     Send a quick reply message with buttons to the recipient.
-
-#     This function constructs a message with the given recipient_id and message,
-#     adds quick reply buttons, sends the message to the recipient, and returns
-#     the JSON content of the response.
-
-#     Args:
-#         recipient_id (str): The ID of the recipient to send the message to.
-#         message (str): The message to send.
-#         buttons (list[str]): A list of button titles for quick replies.
-
-#     Returns:
-#         dict: The JSON content of the response.
-#     """
-#     btns = [
-#         {"type": "reply", "reply": {"id": f"choice{idx+1}", "title": b}}
-#         for idx, b in enumerate(buttons)
-#     ]
-#     data = {
-#         "messaging_product": "whatsapp",
-#         "recipient_type": "individual",
-#         "to": recipient_id,
-#         "type": "interactive",
-#         "interactive": {
-#             "type": "button",
-#             "body": {"text": message},
-#             "action": {"buttons": btns},
-#         },
-#     }
-#     endpoint = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-#     return await _post_httpx_request(endpoint, data=data)
-
-
-# async def send_pdf(
-#     recipient_id: str, file_data: bytes, file_name: str, mime_type: str
-# ) -> dict:
-#     """
-#     Sends a PDF file to the specified recipient on WhatsApp.
-
-#     Args:
-#         recipient_id (str): The ID of the recipient to send the PDF to.
-#         file_data (bytes): The binary content of the PDF file.
-#         file_name (str): The name of the PDF file.
-#         mime_type (str): The MIME type of the file, should be 'application/pdf'.
-
-#     Returns:
-#         dict: The JSON content of the response from the WhatsApp API.
-#     """
-#     media_id = (await _upload_media(file_data, file_name, mime_type))["id"]
-#     data = {
-#         "messaging_product": "whatsapp",
-#         "recipient_type": "individual",
-#         "to": recipient_id,
-#         "type": "document",
-#         "document": {"filename": file_name, "id": media_id},
-#     }
-#     endpoint = f"https://graph.facebook.com/{WHATSAPP_API_VERSION}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
-#     return await _post_httpx_request(endpoint, data=data)

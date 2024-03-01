@@ -1,5 +1,5 @@
+from typing import TypeVar, Type
 from dataclasses import asdict, dataclass, field
-import typing as t
 
 
 @dataclass
@@ -92,6 +92,7 @@ class User(AbstractDataTableClass):
     phone_number: str | None = field(default=None)
     telegram_id: str | None = field(default=None)
     prompt: str | None = field(default=None)
+    num_letter_credits: int = field(default=0, kw_only=True)
 
 
 @dataclass
@@ -114,6 +115,7 @@ class Message(AbstractDataTableClass):
     action_confirmed: bool | None = None
     response_to: str | None = None
     messaging_platform: str | None = None
+    order_referenced: str | None = None
 
     @property
     def safe_message_body(self) -> str:
@@ -134,7 +136,7 @@ class TelegramMessage(Message):
         default_factory=lambda: ["message_id", "tg_message_id"], kw_only=True
     )
     tg_user_id: str | None = None
-    tg_chat_id: str | None = None
+    tg_chat_id: int | None = None
     tg_message_id: str | None = None
     messaging_platform: str = "Telegram"
 
@@ -142,7 +144,7 @@ class TelegramMessage(Message):
 @dataclass
 class WhatsappMessage(Message):
     _unique_fields: list[str] = field(
-        default_factory=lambda: ["message_id"], kw_only=True
+        default_factory=lambda: ["message_id", "wa_mid"], kw_only=True
     )
     wa_mid: str | None = None
     wa_webhook_id: str | None = None
@@ -212,13 +214,13 @@ class Order(AbstractDataTableClass):
     _unique_fields: list[str] = field(
         default_factory=lambda: ["order_id"], kw_only=True
     )
+    order_id: str | None = None
     user_id: str | None = None
     draft_id: str | None = None
     address_id: str | None = None
-    blob_path: str | None = None
-    order_id: str | None = None
-    created_at: str | None = None
-    price: float | None = None
+    message_id: str | None = None
+    status: str | None = None  # payment_pending, paid, transferred
+    payment_type: str | None = None  # one_off, credits
 
 
 @dataclass
@@ -243,3 +245,6 @@ class Changelog(AbstractDataTableClass):
     column_type: str | None = None
     old_value: str | None = None
     new_value: str | None = None
+
+
+MessageType = TypeVar("MessageType", bound=Message)

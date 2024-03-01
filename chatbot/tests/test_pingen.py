@@ -25,3 +25,7 @@ def test_get_letter_details(pingen):
     re = pingen.get_letter_details(exant_uuid)
     assert isinstance(re, dict)
     assert re["id"] == exant_uuid
+
+
+def test_dispatch_letter(pingen):
+    assert False

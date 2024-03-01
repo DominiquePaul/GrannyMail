@@ -167,7 +167,7 @@ async def transcribe_voice_memo(voice_bytes: bytes, duration: float) -> str:
     return transcript.text
 
 
-def is_supported_by_times_new_roman(s):
+def check_supported_by_times_new_roman(s):
     """
     Checks if all characters in the string are likely to be supported by Times New Roman.
     This function checks against a broad approximation of character ranges known to be supported.
@@ -175,8 +175,8 @@ def is_supported_by_times_new_roman(s):
     Parameters:
     - s: A string to be checked.
 
-    Returns:
-    - True if all characters are within supported ranges, False otherwise.
+    Raises:
+        CharactersNotSupported: If the string contains characters not supported by Times New Roman
     """
     supported_ranges = [
         ("\u0020", "\u007E"),  # Basic ASCII
@@ -188,7 +188,17 @@ def is_supported_by_times_new_roman(s):
         # Add more ranges as needed
     ]
 
-    return all(any(start <= c <= end for start, end in supported_ranges) for c in s)
+    s = s.replace("\n", "")
+    unsupported_characters = set()
+
+    for c in s:
+        if not any(start <= c <= end for start, end in supported_ranges):
+            unsupported_characters.add(c)
+
+    if len(unsupported_characters) > 0:
+        raise CharactersNotSupported(
+            "Following characters are not supported: {unsupported_characters}"
+        )
 
 
 async def transcript_to_letter_text(transcript: str, user: User) -> str:
@@ -221,10 +231,8 @@ async def transcript_to_letter_text(transcript: str, user: User) -> str:
     )
     transcript = completion.choices[0].message.content
     # check whether we only have latin letters
-    if not is_supported_by_times_new_roman(transcript):
-        raise CharactersNotSupported(
-            f"The transcribed text contains non-Latin characters: '{transcript}'"
-        )
+    check_supported_by_times_new_roman(transcript)
+
     return transcript  # type: ignore
 
 

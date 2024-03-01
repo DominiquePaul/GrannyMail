@@ -4,14 +4,83 @@ import typing as t
 from dotenv import find_dotenv, load_dotenv
 from httpx import AsyncClient
 import copy
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+
 
 from grannymail.bot.whatsapp import WebhookRequestData
 import grannymail.db.classes as dbc
-from grannymail.db.supaclient import SupabaseClient, NoUserFound
+from grannymail.db.supaclient import SupabaseClient
 from grannymail.main import app
 from grannymail.utils.message_utils import parse_new_address
+import grannymail.db.classes as dbc
+
+from tests.test_utils import message_id_generator
 
 load_dotenv(find_dotenv())
+
+
+def create_mock_async_function(monkeypatch, function_path, message_id_gen):
+    async def send_message_side_effect(*args, **kwargs):
+        chat_id = kwargs.get("chat_id", 1234)
+        message_id = next(message_id_gen)
+        return MagicMock(chat_id=chat_id, message_id=message_id)
+
+    mock_function = AsyncMock(side_effect=send_message_side_effect)
+    monkeypatch.setattr(function_path, mock_function)
+    return mock_function
+
+
+@pytest.fixture
+def mock_send_message_tg(monkeypatch):
+    message_id_gen = message_id_generator(start=11111)
+    return create_mock_async_function(
+        monkeypatch, "telegram.ext.ExtBot.sendMessage", message_id_gen
+    )
+
+
+@pytest.fixture
+def mock_send_document_tg(monkeypatch):
+    message_id_gen = message_id_generator(start=22222)
+    return create_mock_async_function(
+        monkeypatch, "telegram.ext.ExtBot.sendDocument", message_id_gen
+    )
+
+
+@pytest.fixture
+def mock_edit_message_text_tg(monkeypatch):
+    message_id_gen = message_id_generator(start=33333)
+    return create_mock_async_function(
+        monkeypatch,
+        "telegram._callbackquery.CallbackQuery.edit_message_text",
+        message_id_gen,
+    )
+
+
+# @pytest.fixture
+# def mock_send_message_wa(monkeypatch):
+#     message_id_gen = message_id_generator(start=11111)
+#     return create_mock_async_function(
+#         monkeypatch, "telegram.ext.ExtBot.sendMessage", message_id_gen
+#     )
+
+
+# @pytest.fixture
+# def mock_send_document_wa(monkeypatch):
+#     message_id_gen = message_id_generator(start=22222)
+#     return create_mock_async_function(
+#         monkeypatch, "telegram.ext.ExtBot.sendDocument", message_id_gen
+#     )
+
+
+# @pytest.fixture
+# def mock_edit_message_text_wa(monkeypatch):
+#     message_id_gen = message_id_generator(start=33333)
+#     return create_mock_async_function(
+#         monkeypatch,
+#         "telegram._callbackquery.CallbackQuery.edit_message_text",
+#         message_id_gen,
+#     )
 
 
 @pytest_asyncio.fixture
@@ -345,14 +414,6 @@ def user(dbclient) -> t.Generator[dbc.User, None, None]:
 
 
 @pytest.fixture
-def draft(dbclient, user) -> t.Generator[dbc.Draft, None, None]:
-    draft = dbc.Draft(user_id=user.user_id, text="Hallo Doris, mir geht es gut!")
-    draft = dbclient.add_draft(draft)
-    yield draft
-    # no need to delete, deletion is cascading with user
-
-
-@pytest.fixture
 def address(
     dbclient, user, address_string_correct
 ) -> t.Generator[dbc.Address, None, None]:
@@ -361,6 +422,18 @@ def address(
     address = dbclient.add_address(address)
     yield address
     # no reason to delete since user will be deleted and this cascades into address
+
+
+@pytest.fixture
+def draft(dbclient, user, address) -> t.Generator[dbc.Draft, None, None]:
+    draft = dbc.Draft(
+        user_id=user.user_id,
+        text="Hallo Doris, mir geht es gut!",
+        address_id=address.address_id,
+    )
+    draft = dbclient.add_draft(draft)
+    yield draft
+    # no need to delete, deletion is cascading with user
 
 
 @pytest.fixture

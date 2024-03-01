@@ -3,23 +3,23 @@ import datetime
 import httpx
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext._contexttypes import ContextTypes
+from telegram.ext import ApplicationBuilder, Application
+
 
 import grannymail.db.classes as dbc
 from grannymail.db.supaclient import SupabaseClient
 from grannymail.utils import message_utils
+import grannymail.config as cfg
 
 db_client = SupabaseClient()
 
 
 class TelegramHandler:
-    def __init__(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-        self.update = update
-        self.context = context
-        self.message: dbc.TelegramMessage = dbc.TelegramMessage()
+    def __init__(self):
+        self.message = dbc.TelegramMessage()
+
+    def _build_application(self) -> Application:
+        return ApplicationBuilder().token(cfg.BOT_TOKEN).build()
 
     def _get_message_type(self, update) -> tuple[str, str | None]:
         if update.message is not None:
@@ -36,6 +36,7 @@ class TelegramHandler:
             else:
                 return "unknown", None
         elif update.callback_query is not None:
+            self.callback_query = update.callback_query
             return "callback", None
         else:
             return "unknown", None
@@ -73,30 +74,35 @@ class TelegramHandler:
                 media_bytes_list.append(media_bytes)
         return media_bytes_list
 
-    async def parse_message(self):
-        if self.update.message is None and self.update.callback_query is None:
+    async def parse_message(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ):
+        if update.message is None and update.callback_query is None:
             raise ValueError("No message or callback found")
 
-        telegram_id: str = self.update.effective_user.username  # type: ignore
+        telegram_id: str = update.effective_user.username  # type: ignore
         user = db_client.get_or_create_user(
             dbc.User(
                 telegram_id=telegram_id,
-                first_name=self.update.effective_user.first_name
-                if self.update.effective_user
+                first_name=update.effective_user.first_name
+                if update.effective_user
                 else "Unknown",
-                last_name=self.update.effective_user.last_name
-                if self.update.effective_user
+                last_name=update.effective_user.last_name
+                if update.effective_user
                 else "Unknown",
             )
         )
-        if self.update.message is not None:
-            timestamp = str(self.update.message.date)
-            message_id = self.update.message.message_id
+        if update.message is not None:
+            timestamp = str(update.message.date)
+            message_id = update.message.message_id
         else:
             timestamp = str(datetime.datetime.now())
-            message_id = self.update.callback_query.id  # type: ignore
+            message_id = update.callback_query.id  # type: ignore
 
-        message_type, attachment_mime_type = self._get_message_type(self.update)
+        message_type, attachment_mime_type = self._get_message_type(update)
+        assert update.effective_chat is not None
         data = {
             "user_id": user.user_id,
             "sent_by": "user",
@@ -105,17 +111,15 @@ class TelegramHandler:
             "attachment_mime_type": attachment_mime_type,
             "message_type": message_type,
             "tg_user_id": telegram_id,
-            "tg_chat_id": self.update.effective_chat.id,  # type: ignore
-            "tg_message_id": (
-                str(self.update.effective_chat.id) + "-" + str(message_id)  # type: ignore
-            ),
+            "tg_chat_id": update.effective_chat.id,  # type: ignore
+            "tg_message_id": (str(update.effective_chat.id) + "-" + str(message_id)),
         }
 
         # Handle callback query
-        if self.update.callback_query is not None:
+        if update.callback_query is not None:
             # CallbackQueries need to be answered, even if no notification to the user is needed
             # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
-            query = self.update.callback_query
+            query = update.callback_query
             await query.answer()
             assert query.data is not None
             query_data = json.loads(query.data)
@@ -147,9 +151,9 @@ class TelegramHandler:
         if message_type == "voice":
             await self.send_message(db_client.get_system_message("voice-confirm"))
             voice_bytes = await self._download_file(
-                self.update.message.voice.file_id, self.context  # type: ignore
+                update.message.voice.file_id, context  # type: ignore
             )
-            duration = self.update.message.voice.duration  # type: ignore
+            duration = update.message.voice.duration  # type: ignore
             transcript = await message_utils.transcribe_voice_memo(
                 voice_bytes, duration
             )
@@ -162,19 +166,17 @@ class TelegramHandler:
             )  # type: ignore
         elif message_type == "file":
             file_bytes = await self._download_file(
-                self.update.message.document.file_id, self.context  # type: ignore
+                update.message.document.file_id, context  # type: ignore
             )
             # Process file_bytes as needed
             # TODO: update message with any new data
         elif message_type == "image":
-            images_bytes_list = await self._download_media(
-                self.update, self.context, "image"
-            )
+            images_bytes_list = await self._download_media(update, context, "image")
             # Process images_bytes_list as needed
             # TODO: update message with any new data
         elif message_type == "text":
             command, message_body = message_utils.parse_command(
-                self.update.message.text  # type: ignore
+                update.message.text  # type: ignore
             )
             data = {
                 "message_body": message_body,
@@ -188,9 +190,10 @@ class TelegramHandler:
         if self.message.message_type == "voice":
             db_client.register_voice_message(voice_bytes, self.message)  # type: ignore
 
-    async def send_message(self, message_body: str):
-        r = await self.context.bot.send_message(
-            chat_id=self.update.effective_chat.id, text=message_body  # type: ignore
+    async def send_message(self, message_body: str) -> dbc.Message:
+        application = self._build_application()
+        r = await application.bot.sendMessage(
+            chat_id=self.message.tg_chat_id, text=message_body
         )
 
         system_message = db_client.add_message(
@@ -200,24 +203,45 @@ class TelegramHandler:
                 message_body=message_body,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="text",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
                 tg_user_id=self.message.tg_user_id,
-                tg_chat_id=str(r.chat_id),
+                tg_chat_id=r.chat_id,
                 tg_message_id=str(r.chat_id) + "-" + str(r.message_id),
             )
         )
+        return system_message
 
-    async def edit_or_send_message(self, message_body: str):
-        query: CallbackQuery = self.update.callback_query  # type: ignore
-        await query.edit_message_text(text=message_body)
-        # add registration of message
-
-    async def send_document(self, document_bytes: bytes, filename: str, mime_type: str):
-        r = await self.context.bot.send_document(
-            chat_id=self.update.effective_chat.id, document=document_bytes, filename=filename  # type: ignore
+    async def edit_or_send_message(self, message_body: str) -> dbc.Message:
+        r = await self.callback_query.edit_message_text(text=message_body)
+        system_message = db_client.add_message(
+            dbc.TelegramMessage(
+                user_id=self.message.user_id,
+                sent_by="system",
+                message_body=message_body,
+                command=self.message.command,
+                draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
+                message_type="text",
+                phone_number=self.message.phone_number,
+                response_to=self.message.message_id,
+                tg_user_id=self.message.tg_user_id,
+                tg_chat_id=r.chat_id,
+                tg_message_id=r.chat_id + "-" + str(r.message_id),
+            )
         )
+        return system_message
+
+    async def send_document(
+        self, document_bytes: bytes, filename: str, mime_type: str
+    ) -> dbc.Message:
+        application = self._build_application()
+        r = await application.bot.sendDocument(
+            chat_id=self.message.tg_chat_id, document=document_bytes, filename=filename
+        )
+
         system_message = db_client.add_message(
             dbc.TelegramMessage(
                 user_id=self.message.user_id,
@@ -225,14 +249,16 @@ class TelegramHandler:
                 attachment_mime_type=mime_type,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="document",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
                 tg_user_id=self.message.tg_user_id,
-                tg_chat_id=str(r.chat_id),
-                tg_message_id=str(r.chat_id) + "-" + str(r.message_id),
+                tg_chat_id=r.chat_id,
+                tg_message_id=r.chat_id + "-" + str(r.message_id),
             )
         )
+        return system_message
 
     async def send_message_confirmation_request(
         self, main_msg: str, cancel_msg: str, confirm_msg: str
@@ -256,6 +282,7 @@ class TelegramHandler:
                 message_body=main_msg,
                 command=self.message.command,
                 draft_referenced=self.message.draft_referenced,
+                order_referenced=self.message.order_referenced,
                 message_type="interactive",
                 phone_number=self.message.phone_number,
                 response_to=self.message.message_id,
@@ -278,9 +305,10 @@ class TelegramHandler:
                 ),
             ],
         ]
-        assert self.update.effective_chat is not None
-        r = await self.context.bot.send_message(
-            chat_id=self.update.effective_chat.id,
+        assert self.message.tg_chat_id is not None
+        application = self._build_application()
+        r = await application.bot.sendMessage(
+            chat_id=self.message.tg_chat_id,
             reply_markup=InlineKeyboardMarkup(keyboard),
             text=main_msg,
         )
