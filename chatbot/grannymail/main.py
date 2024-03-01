@@ -244,7 +244,7 @@ async def verify_route(request: Request):
 @app.router.post("/api/whatsapp")
 async def webhook_route(data: WebhookRequestData):
     if data.entry[0].get("changes", [{}])[0].get("value", {}).get("statuses"):
-        logger.info("--- WhatsApp status update received ---")
+        logger.info("WA status update")
         return JSONResponse(content="ok", status_code=200)
     else:
         try:

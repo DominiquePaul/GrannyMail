@@ -214,10 +214,11 @@ async def transcript_to_letter_text(transcript: str, user: User) -> str:
 
     # get current prompt of user
     retrieved_user = db_client.get_user(user)
-    user_prompt = retrieved_user.prompt
-    if user_prompt is None:
-        user_prompt = db_client.get_system_message("system-prompt-letter_prompt")
-    final_prompt = f"Instructions:\n User input:\n{user_prompt}\nTranscript of the message: {transcript} Your letter:"
+    optional_user_prompt = ""
+    if retrieved_user.prompt:
+        optional_user_prompt = "Additional user instructions: {retrieved_user.prompt}"
+
+    final_prompt = f"Instructions: Turn the transcript below into a letter. Correct mistakes that my have arisen from a (faulty) transcription of the audio. \n\n {optional_user_prompt}\n\nTranscript of the message: \n{transcript} \n\nYour letter:\n"
 
     # feed into gpt:
     completion = await openai_client.chat.completions.create(
