@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 import sentry_sdk
-from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from telegram import Update
 from telegram.ext import (
@@ -21,15 +21,15 @@ from telegram.ext._contexttypes import ContextTypes
 import grannymail.bot.whatsapp as whatsapp
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
-import grannymail.db.supaclient as supaclient
 from grannymail.bot.command_handler import Handler
 from grannymail.bot.whatsapp import WebhookRequestData
 import grannymail.bot.utils as bot_utils
 from grannymail.pingen import Pingen
 from grannymail.logger import logger
 import grannymail.stripe_payments as sp
+import grannymail.db.repositories as repos
+import grannymail.db.tasks as db_tasks
 
-# import grannymail.bot.whatsapp as whatsapp
 
 # setup sentry
 if cfg.SENTRY_ENDPOINT:
@@ -44,8 +44,8 @@ if cfg.SENTRY_ENDPOINT:
         profiles_sample_rate=1.0,
     )
 
-db_client = supaclient.SupabaseClient()
 pingen_client = Pingen()
+supaclient = repos.create_supabase_client()
 
 # Initialize python telegram bot
 ptb = (
@@ -87,7 +87,8 @@ async def job_update_system_messages(context: ContextTypes.DEFAULT_TYPE) -> None
     to allow for easy customisation of the messages without having to redeploy the bot.
     """
     logger.info("Updating system messages")
-    db_client.update_system_messages()
+    sm_repo = repos.SystemMessageRepository(supaclient)
+    db_tasks.synchronise_sheet_with_db(sm_repo)
 
 
 async def handle_no_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

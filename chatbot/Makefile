@@ -20,6 +20,6 @@ db_sync:
 	# echo "This will take 90-100 seconds..."
 	# cd ../database_config && snaplet snapshot create && sleep 90 && snaplet snapshot restore --no-reset --latest -y && cd ../chatbot
 db_messages:
-	python -m scripts.update_system_messages
+	python -m grannymail.db.tasks
 freeze:
 	pip freeze | sed "s!git+ssh://!git+https://!" >requirements.txt

@@ -1,20 +1,13 @@
 import typing as t
 import stripe
-from grannymail.db.supaclient import SupabaseClient
 from grannymail.logger import logger
 import grannymail.db.classes as dbc
 import grannymail.config as cfg
 import grannymail.pingen as pingen
+import grannymail.db.repositories as repos
 
 stripe.api_key = cfg.STRIPE_API_KEY
-dbclient = SupabaseClient()
-
-
-def _add_credits_to_user(user_id: str, num_credits: int) -> None:
-    user = dbclient.get_user(dbc.User(user_id=user_id))
-    user_copy = user.copy()
-    user_copy.num_letter_credits += num_credits
-    dbclient.update_user(user, user_copy)
+supaclient = repos.create_supabase_client()
 
 
 def get_credits_bought(payment_link_id: str) -> int:
@@ -52,19 +45,22 @@ def get_formated_stripe_link(
 def handle_event(event: dict) -> tuple[str, str, str]:
     # Process the event
     if event["type"] == "checkout.session.completed":
+        user_repo = repos.UserRepository(supaclient)
+        order_repo = repos.OrderRepository(supaclient)
+        message_repo = repos.MessagesRepository(supaclient)
+        system_message_repo = repos.SystemMessageRepository(supaclient)
+
         checkout_info = event["data"]["object"]
         client_reference_id = checkout_info.get("client_reference_id")
-        order = dbclient.get_order(dbc.Order(order_id=client_reference_id))
-        message = dbclient.get_message(dbc.Message(message_id=client_reference_id))
+        order = order_repo.maybe_get_one(client_reference_id)
+        message = message_repo.maybe_get_one(client_reference_id)
         if order is not None and message is not None:
             raise ValueError(f"Order and User found for same ID: {client_reference_id}")
         elif order is not None:
             # case: one-off payment was made. crid is an order id.
             order = pingen.dispatch_order(order_id=client_reference_id)
-            messaging_platform = dbclient.get_message(
-                dbc.Message(message_id=order.message_id)
-            ).messaging_platform
-            message_body = dbclient.get_system_message("send-success-one_off")
+            messaging_platform = message_repo.get(order.message_id).messaging_platform
+            message_body = system_message_repo.get("send-success-one_off").message_body
             user_id = order.user_id
             item = "One-off payment"
         elif message is not None:
@@ -72,15 +68,20 @@ def handle_event(event: dict) -> tuple[str, str, str]:
             payment_link_id = checkout_info["payment_link_id"]
             num_credits = get_credits_bought(payment_link_id)
             assert message.user_id is not None
-            _add_credits_to_user(message.user_id, num_credits)
-            messaging_platform = message.messaging_platform
-            message_body = dbclient.get_system_message("lorem")
+
+            # add credits to user's account
             user_id = message.user_id
-            item = "{num_credits} Credit(s)"
+            user = user_repo.get(message.user_id)
+            user.num_letter_credits += num_credits
+            user_repo.update(user)
+
+            messaging_platform = message.messaging_platform
+            message_body = system_message_repo.get("lorem").message_body
+            item = f"{num_credits} Credit(s)"
         else:
             raise ValueError("No order or user found for ID: {client_reference_id}")
 
-        user = dbclient.get_user(dbc.User(user_id=user_id))
+        user = user_repo.get(user_id)
         if user.phone_number is not None:
             user_identifier = f"phone number {user.phone_number}"
         elif user.telegram_id is not None:
@@ -88,8 +89,6 @@ def handle_event(event: dict) -> tuple[str, str, str]:
         else:
             user_identifier = "[no user information]"
         logger.info(f"Payment received for {item} by user with {user_identifier}")
-        assert user_id is not None
-        assert messaging_platform is not None
         return message_body, user_id, messaging_platform
     else:
         raise ValueError(f"Invalid event type: {event['type']}")

@@ -24,7 +24,7 @@ async def test_transcript_to_letter_text(user):
     transcript = read_txt_file("tests/test_data/example_transcript.txt")
     user.prompt = "You rhyme every line"
     start = time.time()
-    letter_content = await transcript_to_letter_text(transcript, user)
+    letter_content = await transcript_to_letter_text(transcript, user.user_id)
     duration = time.time() - start
     print(f"Time taken to create transcript: {duration}")
     assert isinstance(letter_content, str)

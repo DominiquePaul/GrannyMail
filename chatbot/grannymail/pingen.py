@@ -7,28 +7,31 @@ import requests
 
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
-from grannymail.db.supaclient import SupabaseClient
+import grannymail.db.repositories as repos
 
-dbclient = SupabaseClient()
+
+supaclient = repos.create_supabase_client()
 
 
 def dispatch_order(order_id: str) -> dbc.Order:
     # create an order and send letter
     pingen_client = Pingen()
-    order = dbclient.get_order(dbc.Order(order_id=order_id))
-    user = dbclient.get_user(dbc.User(user_id=order.user_id))
+
+    order_repo = repos.OrderRepository(supaclient)
+    draft_repo = repos.DraftRepository(supaclient)
+    draft_blob_repo = repos.DraftBlobRepository(supaclient)
+
+    order = order_repo.get(order_id)
 
     # download the draft pdf as bytes
-    letter_name = f"letter_{user.first_name}_{user.last_name}_{str(datetime.datetime.utcnow())}.pdf"
-    draft = dbclient.get_draft(dbc.Draft(draft_id=order.draft_id))
-    if draft.address_id is None:
-        raise ValueError(f"Draft {draft.draft_id} has no address")
-
-    letter_bytes = dbclient.download_draft(draft)
+    draft_id = draft_repo.get(order.draft_id).draft_id
+    letter_bytes = draft_blob_repo.download(draft_id)
+    letter_name = f"order_{order.order_id}_{str(datetime.datetime.utcnow())}.pdf"
 
     pingen_client.upload_and_send_letter(letter_bytes, file_name=letter_name)
+
     order.status = "transferred"
-    return dbclient.update_order(order, order)
+    return order_repo.update(order)
 
 
 class Pingen:

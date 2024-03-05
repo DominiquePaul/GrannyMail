@@ -1,3 +1,4 @@
+from uuid import uuid4
 import logging
 from io import BytesIO
 
@@ -56,7 +57,7 @@ def my_first_page(canvas, doc, address):
     """Creates the layout for the first page."""
     canvas.saveState()
     canvas.setFont(DEFAULT_FONT, DEFAULT_FONT_SIZE)
-    if address.is_complete_address():
+    if address is not None and address.is_complete_address():
         draw_address(canvas, address)
     canvas.drawString(PAGE_NUMBER_OFFSET, PAGE_NUMBER_OFFSET, "Seite 1")
     canvas.restoreState()
@@ -70,7 +71,9 @@ def my_later_pages(canvas, doc):
     canvas.restoreState()
 
 
-def create_letter_pdf_as_bytes(input_text: str, address: Address = Address()) -> bytes:
+def create_letter_pdf_as_bytes(
+    input_text: str, address: Address | None = None
+) -> bytes:
     """Generates a PDF letter from input text and optional address."""
     # Create a file-like buffer to receive PDF data
     buffer = BytesIO()
@@ -99,7 +102,7 @@ def create_letter_pdf_as_bytes(input_text: str, address: Address = Address()) ->
 
 
 def create_and_save_letter(
-    file_path: str, input_text: str, address: Address = Address()
+    file_path: str, input_text: str, address: Address | None = None
 ):
     pdf_bytes = create_letter_pdf_as_bytes(input_text=input_text, address=address)
     with open(file_path, "wb") as f:
@@ -108,6 +111,7 @@ def create_and_save_letter(
 
 if __name__ == "__main__":
     address = Address(
+        address_id=str(uuid4()),
         addressee="Pickle Rick",
         address_line1="Pickle Lane 42",
         address_line2=None,

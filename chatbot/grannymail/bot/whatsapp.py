@@ -1,6 +1,6 @@
+from uuid import uuid4
 import logging
 import tempfile
-import io
 from datetime import datetime
 
 import httpx
@@ -10,11 +10,10 @@ from tinytag import TinyTag  # mypy: ignore
 
 import grannymail.config as cfg
 import grannymail.db.classes as dbc
-import grannymail.db.supaclient as supaclient
 from grannymail.utils import message_utils
-import grannymail.utils.message_utils as msg_utils
+import grannymail.db.repositories as repos
 
-db_client = supaclient.SupabaseClient()
+supaclient = repos.create_supabase_client()
 
 
 class WebhookRequestData(BaseModel):
@@ -135,107 +134,141 @@ class WhatsappHandler:
             return float(tag.duration) if tag.duration else 0
 
     async def parse_message(self, data: WebhookRequestData):
+        """Parses the incoming webhook request and returns a message object
+
+        Args:
+            data (WebhookRequestData): _description_
+
+        Raises:
+            ValueError: _description_
+            ValueError: _description_
+
+        Returns:
+            message: dbc.Message
+
+        Also does:
+        - Creates a user if the user does not exist
+        - Sends a confirmation message if the message is a voice message
+        - Adds message to database
+        - Downloads any given file and uploads it to file storage
+
+        # Alternative flow in service (?) layer:
+        # - Parse the message
+        # - Send a confirmation message if the message is a voice message (needs to happen asap)
+        # - Optionally create user if none found
+        # - Optionally download file if message is an image or voice memo
+        # - Add the message to the database
+        """
+        user_repo = repos.UserRepository(supaclient)
+        message_repo = repos.WhatsappMessagesRepository(supaclient)
+        file_repo = repos.FileRepository(supaclient)
+        blob_file_repo = repos.FilesBlobRepository(supaclient)
+
         values = data.entry[0]["changes"][0]["value"]
         wa_message = values["messages"][0]
-        user = db_client.get_or_create_user(
-            dbc.User(phone_number=values["contacts"][0]["wa_id"])
+        phone_number = values["contacts"][0]["wa_id"]
+
+        timestamp = datetime.utcfromtimestamp(int(wa_message["timestamp"])).strftime(
+            "%Y-%m-%d %H:%M:%S.%f"
         )
-        message_data = {
-            "user_id": user.user_id,
-            "sent_by": "user",
-            "phone_number": values["contacts"][0]["wa_id"],
-            "timestamp": datetime.utcfromtimestamp(
-                int(wa_message["timestamp"])
-            ).strftime("%Y-%m-%d %H:%M:%S.%f"),
-            "message_type": wa_message["type"],
-            "wa_mid": wa_message["id"],
-            "wa_webhook_id": data.entry[0]["id"],
-            "wa_phone_number_id": values["metadata"]["phone_number_id"],
-            "wa_profile_name": values["contacts"][0]["profile"]["name"],
-        }
+
+        # Get or create user
+        user = user_repo.get(id=None, filters={"phone_number": phone_number})
+        if user is None:
+            user = user_repo.add(
+                dbc.User(
+                    user_id=str(uuid4()),
+                    created_at=timestamp,
+                    phone_number=phone_number,
+                )
+            )
+        self.message = dbc.WhatsappMessage(
+            message_id=str(uuid4()),
+            user_id=user.user_id,
+            sent_by="user",
+            phone_number=values["contacts"][0]["wa_id"],
+            timestamp=timestamp,
+            message_type=wa_message["type"],
+            wa_mid=wa_message["id"],
+            wa_webhook_id=data.entry[0]["id"],
+            wa_phone_number_id=values["metadata"]["phone_number_id"],
+            wa_profile_name=values["contacts"][0]["profile"]["name"],
+        )
 
         # Initialize media_bytes to None to ensure it's always defined
         media_bytes = None
 
         context = wa_message.get("context")
         if context:
-            message_data.update(
-                {
-                    "wa_reference_wamid": context["id"],
-                    "wa_reference_message_user_phone": context["from"],
-                }
-            )
+            self.message.wa_reference_wamid = context["id"]
+            self.message.wa_reference_message_user_phone = context["from"]
 
         # Process message based on type
         if wa_message["type"] == "text":
             command, message_body = message_utils.parse_command(
                 wa_message["text"]["body"]
             )
-            message_data.update({"message_body": message_body, "command": command})
+            self.message.message_body = message_body
+            self.message.command = command
         elif wa_message["type"] in ["audio", "document", "image"]:
             media_type = wa_message["type"]
             if media_type == "audio":
                 # notify user that memo was received
-                self.message = dbc.WhatsappMessage(**message_data)
-                await self.send_message(db_client.get_system_message("voice-confirm"))
-                message_data.update({"command": "voice"})
-            message_data.update(
-                {
-                    "attachment_mime_type": wa_message[media_type]["mime_type"].split(
-                        ";"
-                    )[0],
-                    "wa_media_id": wa_message[media_type]["id"],
-                }
-            )
-            media_bytes = await self._download_media(message_data["wa_media_id"])
+                sm_rep = repos.SystemMessageRepository(supaclient)
+                await self.send_message(sm_rep.get_msg("voice-confirm"))
+                self.message.command = "voice"
+            self.message.attachment_mime_type = wa_message[media_type][
+                "mime_type"
+            ].split(";")[0]
+            self.message.wa_media_id = wa_message[media_type]["id"]
+            assert self.message.wa_media_id is not None
+            media_bytes = await self._download_media(self.message.wa_media_id)
             if wa_message["type"] == "audio":
                 duration = self._get_audio_duration(media_bytes)
-                message_data.update(
-                    {
-                        "memo_duration": duration,
-                        "transcript": await message_utils.transcribe_voice_memo(
-                            media_bytes, duration=duration
-                        ),
-                    }
+                self.message.memo_duration = duration
+                self.message.transcript = await message_utils.transcribe_voice_memo(
+                    media_bytes, duration=duration
+                )
+                # 1. Upload voice memo to voice repository
+                path = blob_file_repo.create_file_path(user.user_id)
+                mime_type = "audio/ogg"
+                blob_file_repo.upload(media_bytes, path, mime_type)
+                # 2. Add file to files repository
+                file_repo.add(
+                    dbc.File(
+                        file_id=str(uuid4()),
+                        message_id=self.message.message_id,
+                        mime_type=mime_type,
+                        blob_path=path,
+                    )
                 )
         elif wa_message["type"] == "interactive":
-            message_referenced_meaning = wa_message["interactive"]["button_reply"]["id"]
-            if message_referenced_meaning == "true":
-                message_data.update({"action_confirmed": True})
-            elif message_referenced_meaning == "false":
-                message_data.update({"action_confirmed": False})
-            else:
+            ref_msg_meaning = wa_message["interactive"]["button_reply"]["id"]
+            if ref_msg_meaning not in ["true", "false"]:
                 raise ValueError(
-                    f"ID of the response is not a boolean: '{message_referenced_meaning}"
+                    f"ID of the response is not a boolean: '{ref_msg_meaning}'"
                 )
+            self.message.action_confirmed = True if ref_msg_meaning == "true" else False
 
             # We want to get the content of the message referenced to understand what kind of callback this is
-            ref_message = db_client.get_message(
-                dbc.WhatsappMessage(wa_mid=message_data["wa_reference_wamid"])
+            ref_message = message_repo.maybe_get_one(
+                id=None, filters={"wa_mid": self.message.wa_reference_wamid}
             )
             if ref_message is None:
                 logging.info(
-                    f"The interactive message referenced the following message ID which could not be found however:'{message_data['wa_reference_wamid']}'"
+                    f"The interactive message referenced the following message ID which could not be found however:'{self.message.wa_reference_wamid}'"
                 )
             else:
                 assert ref_message.command is not None
-                message_data.update(
-                    {
-                        "command": ref_message.command + "_callback",
-                        "response_to": ref_message.message_id,
-                    }
-                )
+                self.message.command = ref_message.command + "_callback"
+                self.message.response_to = ref_message.message_id
         else:
             raise ValueError(f"Unsupported message type: '{wa_message['type']}'")
 
         # Create and add message to database
-        self.message = db_client.add_message(dbc.WhatsappMessage(**message_data))
+        return message_repo.add(self.message)
 
-        # Special handling for voice messages
-        if message_data["message_type"] == "audio" and media_bytes is not None:
-            db_client.register_voice_message(media_bytes, self.message)
-
-    async def send_message(self, message_body: str):
+    async def send_message(self, message_body: str) -> dbc.WhatsappMessage:
         """
         Send a text message to the recipient.
 
@@ -249,6 +282,7 @@ class WhatsappHandler:
         Returns:
             dict: The JSON content of the response.
         """
+        message_repo = repos.WhatsappMessagesRepository(supaclient)
         data = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
@@ -259,22 +293,21 @@ class WhatsappHandler:
         url = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(url, data=data)
 
-        system_reply = db_client.add_message(
-            dbc.WhatsappMessage(
-                user_id=self.message.user_id,
-                sent_by="system",
-                message_body=message_body,
-                command=self.message.command,
-                draft_referenced=self.message.draft_referenced,
-                order_referenced=self.message.order_referenced,
-                message_type="text",
-                phone_number=self.message.phone_number,
-                response_to=self.message.message_id,
-                wa_mid=r["messages"][0]["id"],
-            )
+        message = dbc.WhatsappMessage(
+            message_id=str(uuid4()),
+            timestamp=str(datetime.utcnow()),
+            user_id=self.message.user_id,
+            sent_by="system",
+            message_body=message_body,
+            command=self.message.command,
+            draft_referenced=self.message.draft_referenced,
+            order_referenced=self.message.order_referenced,
+            message_type="text",
+            phone_number=self.message.phone_number,
+            response_to=self.message.message_id,
+            wa_mid=r["messages"][0]["id"],
         )
-
-        return system_reply
+        return message_repo.add(message)
 
     async def _upload_media(
         self, file_data: bytes, file_name: str, mime_type: str
@@ -313,6 +346,7 @@ class WhatsappHandler:
         Returns:
             dict: The JSON content of the response from the WhatsApp API.
         """
+        message_repo = repos.WhatsappMessagesRepository(supaclient)
         media_id = (await self._upload_media(file_data, filename, mime_type))["id"]
         data = {
             "messaging_product": "whatsapp",
@@ -323,8 +357,10 @@ class WhatsappHandler:
         }
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(endpoint, data=data)
-        system_reply = db_client.add_message(
+        return message_repo.add(
             dbc.WhatsappMessage(
+                message_id=str(uuid4()),
+                timestamp=str(datetime.utcnow()),
                 user_id=self.message.user_id,
                 sent_by="system",
                 attachment_mime_type=mime_type,
@@ -338,7 +374,6 @@ class WhatsappHandler:
                 wa_media_id=media_id,
             )
         )
-        return system_reply
 
     async def send_message_confirmation_request(
         self, main_msg: str, cancel_msg: str, confirm_msg: str
@@ -358,6 +393,7 @@ class WhatsappHandler:
         Returns:
             dict: The JSON content of the response.
         """
+        message_repo = repos.WhatsappMessagesRepository(supaclient)
         btns = [
             {"type": "reply", "reply": {"id": "false", "title": cancel_msg}},
             {"type": "reply", "reply": {"id": "true", "title": confirm_msg}},
@@ -376,8 +412,10 @@ class WhatsappHandler:
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
         r = await self._post_httpx_request(endpoint, data=data)
 
-        system_reply = db_client.add_message(
+        return message_repo.add(
             dbc.WhatsappMessage(
+                message_id=str(uuid4()),
+                timestamp=str(datetime.utcnow()),
                 user_id=self.message.user_id,
                 sent_by="system",
                 message_body=main_msg,
@@ -391,7 +429,5 @@ class WhatsappHandler:
             )
         )
 
-        return system_reply
-
-    async def edit_or_send_message(self, message_body: str):
-        await self.send_message(message_body)
+    async def edit_or_send_message(self, message_body: str) -> dbc.WhatsappMessage:
+        return await self.send_message(message_body)
