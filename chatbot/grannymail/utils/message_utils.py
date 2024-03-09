@@ -6,20 +6,13 @@ import numpy as np
 from openai import AsyncOpenAI
 from rapidfuzz import fuzz
 
-import grannymail.db.classes as dbc
+import grannymail.domain.models as m
 from grannymail.logger import logger
-import grannymail.db.repositories as repos
+from grannymail.services.unit_of_work import AbstractUnitOfWork
 
 openai_client = AsyncOpenAI()
-supaclient = repos.create_supabase_client()
 
-
-class CharactersNotSupported(Exception):
-    """Exception raised for characters not supported by the font."""
-
-    def __init__(self, message="Characters not supported"):
-        self.message = message
-        super().__init__(self.message)
+# General stuff
 
 
 def strip_command(msg: str, command: str) -> str:
@@ -33,19 +26,6 @@ def strip_command(msg: str, command: str) -> str:
         str: The message with the command stripped
     """
     return msg.replace(command, "").strip()
-
-
-def error_in_address(msg: str) -> str | None:
-    sm_repo = repos.SystemMessageRepository(supaclient)
-    # Strip to remove leading/trailing whitespace
-    msg_lines = msg.strip().split("\n")
-    if len(msg_lines) < 5:
-        response = sm_repo.get_msg("add_address-error-too_short")
-        return response
-    elif len(msg_lines) > 6:
-        response = sm_repo.get_msg("add_address-error-too_long")
-        return response
-    return None  # Explicitly return None for clarity
 
 
 def parse_command(txt: str) -> tuple[str | None, str]:
@@ -62,13 +42,30 @@ def parse_command(txt: str) -> tuple[str | None, str]:
         return "no_command", txt
 
 
-def parse_new_address(msg: str) -> dbc.Address:
+# Address stuff
+
+
+def error_in_address(msg: str, uow: AbstractUnitOfWork) -> str | None:
+    # Strip to remove leading/trailing whitespace
+    msg_lines = msg.strip().split("\n")
+    if len(msg_lines) < 5:
+        response = uow.system_messages.get_msg("add_address-error-too_short")
+        return response
+    elif len(msg_lines) > 6:
+        response = uow.system_messages.get_msg("add_address-error-too_long")
+        return response
+    return None  # Explicitly return None for clarity
+
+
+def parse_new_address(msg: str, created_at: str, user_id: str) -> m.Address:
     """
     Parse a user message into an address object. The requirement is
     that the each item is separated by a newline.
 
     Args:
         msg (str): The user message
+        created_at (str): The timestamp of the message
+        user_id (str): The user id
 
     Returns:
         Address: The parsed address
@@ -76,7 +73,8 @@ def parse_new_address(msg: str) -> dbc.Address:
     msg_lines = msg.replace("/add_address", "").strip().split("\n")
     if len(msg_lines) == 5:
         # No address line 2
-        return dbc.Address(
+        return m.Address(
+            user_id=user_id,
             address_id=str(uuid4()),
             addressee=msg_lines[0],
             address_line1=msg_lines[1],
@@ -84,10 +82,12 @@ def parse_new_address(msg: str) -> dbc.Address:
             zip=msg_lines[2],
             city=msg_lines[3],
             country=msg_lines[4],
+            created_at=created_at,
         )
     else:
         # Address line 2
-        return dbc.Address(
+        return m.Address(
+            user_id=user_id,
             address_id=str(uuid4()),
             addressee=msg_lines[0],
             address_line1=msg_lines[1],
@@ -95,11 +95,12 @@ def parse_new_address(msg: str) -> dbc.Address:
             zip=msg_lines[3],
             city=msg_lines[4],
             country=msg_lines[5],
+            created_at=created_at,
         )
 
 
-def format_address_book(addresses: list[dbc.Address]) -> str:
-    def format_single_message(address: dbc.Address) -> str:
+def format_address_book(addresses: list[m.Address]) -> str:
+    def format_single_message(address: m.Address) -> str:
         formatted_message = f"{address.addressee}\n" + f"{address.address_line1}\n"
 
         if address.address_line2:
@@ -116,7 +117,7 @@ def format_address_book(addresses: list[dbc.Address]) -> str:
 
 
 def fetch_closest_address_index(
-    fuzzy_string: str, address_book: list[dbc.Address]
+    fuzzy_string: str, address_book: list[m.Address]
 ) -> int:
     """Returns the entry in the address book that is closest to the name supplied using fuzzy matching
 
@@ -128,7 +129,7 @@ def fetch_closest_address_index(
         int: Returns the index of the closest match
     """
 
-    def serialise_address(address: dbc.Address) -> str:
+    def serialise_address(address: m.Address) -> str:
         values = [
             address.addressee,
             address.address_line1,
@@ -153,6 +154,17 @@ def fetch_closest_address_index(
         return -1
 
 
+# AI Stuff
+
+
+class CharactersNotSupported(Exception):
+    """Exception raised for characters not supported by the font."""
+
+    def __init__(self, message="Characters not supported"):
+        self.message = message
+        super().__init__(self.message)
+
+
 async def transcribe_voice_memo(voice_bytes: bytes, duration: float) -> str:
     """Transcribes a voice memo asynchronously
 
@@ -173,7 +185,7 @@ async def transcribe_voice_memo(voice_bytes: bytes, duration: float) -> str:
     return transcript.text
 
 
-def check_supported_by_times_new_roman(s):
+def _check_supported_by_times_new_roman(s):
     """
     Checks if all characters in the string are likely to be supported by Times New Roman.
     This function checks against a broad approximation of character ranges known to be supported.
@@ -207,7 +219,9 @@ def check_supported_by_times_new_roman(s):
         )
 
 
-async def transcript_to_letter_text(transcript: str, user_id: str) -> str:
+async def transcript_to_letter_text(
+    transcript: str, user_id: str, uow: AbstractUnitOfWork
+) -> str:
     """Converts a transcript to a letter text
 
     Args:
@@ -216,12 +230,8 @@ async def transcript_to_letter_text(transcript: str, user_id: str) -> str:
     Returns:
         str: The letter text
     """
-    sm_repo = repos.SystemMessageRepository(supaclient)
-    system_msg = sm_repo.get_msg("system-prompt-letter_prompt")
-
-    # get current prompt of user
-    user = repos.UserRepository(supaclient).get(user_id)
-
+    system_msg = uow.system_messages.get_msg("system-prompt-letter_prompt")
+    user = uow.users.get(user_id)
     optional_user_prompt = ""
     if user.prompt:
         optional_user_prompt = "Additional user instructions: {retrieved_user.prompt}"
@@ -242,14 +252,13 @@ async def transcript_to_letter_text(transcript: str, user_id: str) -> str:
     assert completion.choices[0].message.content is not None
     transcript = completion.choices[0].message.content
     # check whether we only have latin letters
-    check_supported_by_times_new_roman(transcript)
+    _check_supported_by_times_new_roman(transcript)
 
     return transcript  # type: ignore
 
 
 async def implement_letter_edits(
-    old_content: str,
-    edit_instructions: str,
+    old_content: str, edit_instructions: str, uow: AbstractUnitOfWork
 ) -> str:
     """Implements the edits requested by the user
 
@@ -261,9 +270,8 @@ async def implement_letter_edits(
     Returns:
         str: The new transcript
     """
-    sm_repo = repos.SystemMessageRepository(supaclient)
-    edit_prompt = sm_repo.get_msg("edit-prompt-implement_changes")
-    system_message = sm_repo.get_msg("edit-prompt-system_message")
+    edit_prompt = uow.system_messages.get_msg("edit-prompt-implement_changes")
+    system_message = uow.system_messages.get_msg("edit-prompt-system_message")
     full_prompt = edit_prompt.format(old_content, edit_instructions)
     # feed into gpt:
     completion = await openai_client.chat.completions.create(
@@ -275,39 +283,3 @@ async def implement_letter_edits(
     )
     out: str = completion.choices[0].message.content  # type: ignore
     return out
-
-
-def format_address_simple(address: dbc.Address) -> str:
-    formatted_message = f"{address.addressee}\n" + f"{address.address_line1}\n"
-
-    if address.address_line2:
-        formatted_message += f"{address.address_line2}\n"
-
-    formatted_message += f"{address.zip} {address.city}\n" + f"{address.country}"
-
-    return formatted_message
-
-
-def format_address_for_confirmation(address: dbc.Address) -> str:
-    """Formats an address in a way that every item is clearly understood and can be confirmed by the user
-
-    Args:
-        address (Address): the address object to be formatted
-
-    Returns:
-        str: serialised address
-    """
-    formatted_message = (
-        f"Addressee: {address.addressee}\n"
-        + f"Address line 1: {address.address_line1}\n"
-    )
-
-    if address.address_line2:
-        formatted_message += f"Address line 2: {address.address_line2}\n"
-
-    formatted_message += (
-        f"Postal Code: {address.zip} \nCity/Town: {address.city}\n"
-        + f"Country: {address.country}"
-    )
-
-    return formatted_message

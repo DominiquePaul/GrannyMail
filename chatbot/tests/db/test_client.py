@@ -2,19 +2,12 @@ from dataclasses import asdict
 
 import pytest
 
-from grannymail.db.classes import Address, Draft, User
-from grannymail.db.supaclient import NoEntryFoundError
+from grannymail.domain.models import Address, Draft, User
 from grannymail.utils.utils import get_prompt_from_sheet
 
 
 class TestUser:
-    def test_to_dict(self):
-        user = User(
-            first_name="test_dom",
-            last_name="test_Paul",
-            email="test@dom.com",
-            telegram_id="dominique_paul",
-        )
+    def test_to_dict(self, user):
         expected = {
             "first_name": "test_dom",
             "last_name": "test_Paul",

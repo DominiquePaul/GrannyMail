@@ -1,6 +1,4 @@
 import logging
-
-# from app.services.openai_service import generate_response
 import re
 
 import requests

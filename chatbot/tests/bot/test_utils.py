@@ -1,6 +1,6 @@
 import pytest
 import grannymail.bot.utils as utils
-import grannymail.db.classes as dbc
+import grannymail.core.models as dbc
 import tests.utils as test_utils
 from unittest.mock import AsyncMock
 from unittest import mock

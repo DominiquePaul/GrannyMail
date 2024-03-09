@@ -1,13 +1,13 @@
 from uuid import uuid4
-import logging
 from io import BytesIO
+from datetime import datetime
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch, mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-from grannymail.db.classes import Address
+from grannymail.domain.models import Address
 
 # Constants for page layout
 PAGE_HEIGHT, PAGE_WIDTH = A4
@@ -26,24 +26,9 @@ normal_style.fontName = DEFAULT_FONT
 normal_style.fontSize = DEFAULT_FONT_SIZE
 
 
-def address_to_address_lines(address: Address):
-    """Converts an address dict to a list of address lines."""
-    if address.is_complete_address() is False:
-        logging.info(f"Tried to send letter with invalid address: {address}")
-        raise ValueError("Invalid address")
-    address_lines = []
-    address_lines.append(address.addressee)
-    address_lines.append(address.address_line1)
-    if address.address_line2:
-        address_lines.append(address.address_line2)
-    address_lines.append(f"{address.zip} {address.city}")
-    # address_lines.append(address.country)
-    return address_lines
-
-
 def draw_address(canvas, address):
     """Draws the address on the canvas at the specified y_position."""
-    address_lines = address_to_address_lines(address)
+    address_lines = address.to_address_lines(include_country=False)
     for i, line in enumerate(address_lines):
         if line:  # Only draw non-empty lines
             canvas.drawString(
@@ -112,6 +97,8 @@ def create_and_save_letter(
 if __name__ == "__main__":
     address = Address(
         address_id=str(uuid4()),
+        created_at=str(datetime.utcnow()),
+        user_id=str(uuid4()),
         addressee="Pickle Rick",
         address_line1="Pickle Lane 42",
         address_line2=None,

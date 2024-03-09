@@ -1,6 +1,6 @@
 from pytest import fixture
 
-from grannymail.pingen import Pingen
+from grannymail.integrations.pingen import Pingen
 
 
 @fixture

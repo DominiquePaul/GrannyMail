@@ -3,8 +3,8 @@ import random
 import string
 from unittest.mock import AsyncMock, MagicMock
 from telegram import Update
-from grannymail.main import ptb
-from grannymail.bot.whatsapp import WebhookRequestData
+from grannymail.entrypoints.api.endpoints.telegram import ptb
+from grannymail.integrations.messengers.whatsapp import WebhookRequestData
 from .conftest import telegram_message_example
 import copy
 

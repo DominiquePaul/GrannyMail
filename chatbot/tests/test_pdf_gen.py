@@ -2,9 +2,11 @@ import os
 
 from pytest import fixture
 
-from grannymail.db.classes import Address
-from grannymail.pdf_gen import create_and_save_letter, create_letter_pdf_as_bytes
-from grannymail.utils.utils import read_txt_file
+from grannymail.domain.models import Address
+from grannymail.integrations.pdf_gen import (
+    create_and_save_letter,
+    create_letter_pdf_as_bytes,
+)
 
 
 @fixture

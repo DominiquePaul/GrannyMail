@@ -3,7 +3,7 @@ import unittest.mock
 from unittest.mock import AsyncMock, MagicMock, patch, ANY, call
 import pytest
 
-import grannymail.main as gm
+import grannymail.entrypoints.fastapi.fastapi as gm
 from grannymail.utils.utils import get_prompt_from_sheet
 import tests.utils as test_utils
 import grannymail.utils.message_utils as msg_utils

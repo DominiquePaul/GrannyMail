@@ -6,43 +6,43 @@ import pandas as pd
 import grannymail.config as cfg
 
 
-def save_pickle(obj: t.Any, file_loc: str) -> None:
-    """Saves any python object as a pickle file for fast and simple saving
+# def save_pickle(obj: t.Any, file_loc: str) -> None:
+#     """Saves any python object as a pickle file for fast and simple saving
 
-    Args:
-        obj (Any): the python object that you want to save
-        file_loc (str): file location of the object
-    """
-    with open(file_loc, "wb") as handle:
-        pickle.dump(obj, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def load_pickle(file_loc: str) -> t.Any:
-    """Load any pickle object from disk into memory
-
-    Args:
-        file_loc (str): path of pickle file to load
-
-    Returns:
-        Any: returns the python object that was stored as a pickle
-    """
-    with open(file_loc, "rb") as handle:
-        obj = pickle.load(handle)  # nosec: B301
-        return obj
+#     Args:
+#         obj (Any): the python object that you want to save
+#         file_loc (str): file location of the object
+#     """
+#     with open(file_loc, "wb") as handle:
+#         pickle.dump(obj, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def read_txt_file(path) -> str:
-    """Reads a text file from disk
+# def load_pickle(file_loc: str) -> t.Any:
+#     """Load any pickle object from disk into memory
 
-    Args:
-        path (str): path to the text file
+#     Args:
+#         file_loc (str): path of pickle file to load
 
-    Returns:
-        str: contents of the text file
-    """
-    with open(path, "r") as f:
-        text = f.read()
-    return text
+#     Returns:
+#         Any: returns the python object that was stored as a pickle
+#     """
+#     with open(file_loc, "rb") as handle:
+#         obj = pickle.load(handle)  # nosec: B301
+#         return obj
+
+
+# def read_txt_file(path) -> str:
+#     """Reads a text file from disk
+
+#     Args:
+#         path (str): path to the text file
+
+#     Returns:
+#         str: contents of the text file
+#     """
+#     with open(path, "r") as f:
+#         text = f.read()
+#     return text
 
 
 def get_message_spreadsheet() -> pd.DataFrame:

@@ -1,6 +1,6 @@
 import uuid
-import grannymail.db.classes as dbc
-import grannymail.stripe_payments as sp
+import grannymail.core.models as dbc
+import grannymail.integrations.stripe_payments as sp
 from unittest.mock import patch
 
 

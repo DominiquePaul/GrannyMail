@@ -1,3 +1,5 @@
+from uuid import uuid4
+import datetime
 import pytest
 import pytest_asyncio
 import typing as t
@@ -8,16 +10,83 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 
-from grannymail.bot.whatsapp import WebhookRequestData
-import grannymail.db.classes as dbc
-from grannymail.db.supaclient import SupabaseClient
-from grannymail.main import app
+from grannymail.integrations.messengers.whatsapp import WebhookRequestData
+from grannymail.entrypoints.api.fastapi import app
 from grannymail.utils.message_utils import parse_new_address
-import grannymail.db.classes as dbc
-
+import grannymail.domain.models as m
+from tests.fake_repositories import FakeUnitOfWork
 from tests.test_utils import message_id_generator
 
 load_dotenv(find_dotenv())
+
+#################
+
+
+@pytest.fixture()
+def user() -> m.User:
+    return m.User(
+        user_id=str(uuid4()),
+        created_at=str(datetime.datetime.utcnow()),
+        email="mike@mockowitz.com",
+        first_name="Mike",
+        last_name="Mockwitz",
+        telegram_id="mike_mockowitz",
+        phone_number="491515222222",
+    )
+
+
+@pytest.fixture
+def address(user, address_string_correct) -> t.Generator[m.Address, None, None]:
+    address = parse_new_address(
+        address_string_correct, created_at=user.created_at, user_id=user.user_id
+    )
+    address.user_id = user.user_id
+    yield address
+    # no reason to delete since user will be deleted and this cascades into address
+
+
+@pytest.fixture
+def draft(user, address) -> t.Generator[m.Draft, None, None]:
+    yield m.Draft(
+        draft_id=str(uuid4()),
+        blob_path="",
+        user_id=user.user_id,
+        created_at=user.created_at,
+        text="Hallo Doris, mir geht es gut!",
+        address_id=address.address_id,
+        builds_on=None,
+    )
+    # no need to delete, deletion is cascading with user
+
+
+@pytest.fixture
+def address2(
+    dbclient, user, address_string_correct2
+) -> t.Generator[m.Address, None, None]:
+    address = parse_new_address(
+        address_string_correct2, created_at=user.created_at, user_id=user.user_id
+    )
+    address.user_id = user.user_id
+    address = dbclient.add_address(address)
+    yield address
+
+
+@pytest.fixture
+def address_string_correct() -> t.Generator[str, None, None]:
+    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City\nMock Country"
+
+
+@pytest.fixture
+def address_string_correct2() -> t.Generator[str, None, None]:
+    yield "Daddy Yankee\n Main Ave. 99\n50987 \nCologne \nGermany"
+
+
+@pytest.fixture
+def address_string_too_short() -> t.Generator[str, None, None]:
+    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City"
+
+
+#################
 
 
 def create_mock_async_function(monkeypatch, function_path, message_id_gen):
@@ -55,32 +124,6 @@ def mock_edit_message_text_tg(monkeypatch):
         "telegram._callbackquery.CallbackQuery.edit_message_text",
         message_id_gen,
     )
-
-
-# @pytest.fixture
-# def mock_send_message_wa(monkeypatch):
-#     message_id_gen = message_id_generator(start=11111)
-#     return create_mock_async_function(
-#         monkeypatch, "telegram.ext.ExtBot.sendMessage", message_id_gen
-#     )
-
-
-# @pytest.fixture
-# def mock_send_document_wa(monkeypatch):
-#     message_id_gen = message_id_generator(start=22222)
-#     return create_mock_async_function(
-#         monkeypatch, "telegram.ext.ExtBot.sendDocument", message_id_gen
-#     )
-
-
-# @pytest.fixture
-# def mock_edit_message_text_wa(monkeypatch):
-#     message_id_gen = message_id_generator(start=33333)
-#     return create_mock_async_function(
-#         monkeypatch,
-#         "telegram._callbackquery.CallbackQuery.edit_message_text",
-#         message_id_gen,
-#     )
 
 
 @pytest_asyncio.fixture
@@ -382,80 +425,3 @@ def wa_voice_memo():
 
 
 ################################################################################################
-
-
-@pytest.fixture()
-def dbclient() -> t.Generator[SupabaseClient, None, None]:
-    # Perform setup for your client object
-    client = (
-        SupabaseClient()
-    )  # Replace with the actual instantiation of your client class
-    # You can perform additional setup if needed
-    yield client  # This is where the fixture provides the client object to the test
-
-
-@pytest.fixture()
-def user(dbclient) -> t.Generator[dbc.User, None, None]:
-    user = dbc.User(
-        email="mike@mockowitz.com",
-        first_name="Mike",
-        last_name="Mockwitz",
-        telegram_id="mike_mockowitz",
-        phone_number="491515222222",
-    )
-    if dbclient.user_exists(user):
-        dbclient.delete_user(user)
-    # Perform setup for your client object
-    user = dbclient.add_user(user)
-    # You can perform additional setup if needed
-    yield user  # This is where the fixture provides the client object to the test
-    # Optionally, perform teardown or cleanup after the test is done
-    dbclient.delete_user(user)
-
-
-@pytest.fixture
-def address(
-    dbclient, user, address_string_correct
-) -> t.Generator[dbc.Address, None, None]:
-    address = parse_new_address(address_string_correct)
-    address.user_id = user.user_id
-    address = dbclient.add_address(address)
-    yield address
-    # no reason to delete since user will be deleted and this cascades into address
-
-
-@pytest.fixture
-def draft(dbclient, user, address) -> t.Generator[dbc.Draft, None, None]:
-    draft = dbc.Draft(
-        user_id=user.user_id,
-        text="Hallo Doris, mir geht es gut!",
-        address_id=address.address_id,
-    )
-    draft = dbclient.add_draft(draft)
-    yield draft
-    # no need to delete, deletion is cascading with user
-
-
-@pytest.fixture
-def address2(
-    dbclient, user, address_string_correct2
-) -> t.Generator[dbc.Address, None, None]:
-    address = parse_new_address(address_string_correct2)
-    address.user_id = user.user_id
-    address = dbclient.add_address(address)
-    yield address
-
-
-@pytest.fixture
-def address_string_correct() -> t.Generator[str, None, None]:
-    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City\nMock Country"
-
-
-@pytest.fixture
-def address_string_correct2() -> t.Generator[str, None, None]:
-    yield "Daddy Yankee\n Main Ave. 99\n50987 \nCologne \nGermany"
-
-
-@pytest.fixture
-def address_string_too_short() -> t.Generator[str, None, None]:
-    yield "Mama Mockowitz\nMock Street 42\n12345 \nMock City"

@@ -1,7 +1,7 @@
 import uuid
 import pytest
 import grannymail.db.repositories as repos
-import grannymail.db.classes as dbc
+import grannymail.core.models as dbc
 from faker import Faker
 
 # from grannymail.db.models import User

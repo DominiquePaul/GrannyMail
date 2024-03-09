@@ -2,36 +2,9 @@ import datetime
 import json
 import logging
 import uuid
-
 import requests
 
 import grannymail.config as cfg
-import grannymail.db.classes as dbc
-import grannymail.db.repositories as repos
-
-
-supaclient = repos.create_supabase_client()
-
-
-def dispatch_order(order_id: str) -> dbc.Order:
-    # create an order and send letter
-    pingen_client = Pingen()
-
-    order_repo = repos.OrderRepository(supaclient)
-    draft_repo = repos.DraftRepository(supaclient)
-    draft_blob_repo = repos.DraftBlobRepository(supaclient)
-
-    order = order_repo.get(order_id)
-
-    # download the draft pdf as bytes
-    draft_id = draft_repo.get(order.draft_id).draft_id
-    letter_bytes = draft_blob_repo.download(draft_id)
-    letter_name = f"order_{order.order_id}_{str(datetime.datetime.utcnow())}.pdf"
-
-    pingen_client.upload_and_send_letter(letter_bytes, file_name=letter_name)
-
-    order.status = "transferred"
-    return order_repo.update(order)
 
 
 class Pingen:
@@ -75,7 +48,7 @@ class Pingen:
         # condition to check whether credentials are still valid, if true then nothing to do
         if (
             self.credentials_timeout is not None
-            and self.credentials_timeout > datetime.datetime.now()
+            and self.credentials_timeout > datetime.datetime.utcnow()
         ):
             return self.access_token
         else:
@@ -92,7 +65,7 @@ class Pingen:
             )
             assert response.status_code == 200, "Could not get credentials"
             response_dict = response.json()
-            self.timeout = datetime.datetime.now() + datetime.timedelta(
+            self.timeout = datetime.datetime.utcnow() + datetime.timedelta(
                 seconds=response_dict["expires_in"]
             )
             self.access_token = response_dict["access_token"]
