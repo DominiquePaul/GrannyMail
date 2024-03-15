@@ -36,7 +36,7 @@ job_queue: JobQueue = ptb.job_queue  # type: ignore
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await ptb.bot.setWebhook(cfg.TELEGRAM_WEBHOOK_URL)
+    # await ptb.bot.setWebhook(cfg.TELEGRAM_WEBHOOK_URL)
     async with ptb:
         await ptb.start()
         yield
