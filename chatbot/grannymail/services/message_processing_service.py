@@ -317,6 +317,10 @@ class MessageProcessingService:
         uow: AbstractUnitOfWork,
         messenger: AbstractMessenger,
     ):
+        if self._is_message_empty(ref_message):
+            await messenger.reply_text(ref_message, "add_address-error-msg_empty", uow)
+            return None
+
         user_error_message = msg_utils.error_in_address(
             ref_message.safe_message_body, uow=uow
         )
