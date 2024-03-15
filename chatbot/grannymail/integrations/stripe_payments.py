@@ -61,8 +61,10 @@ def handle_event(
 
     # fetch necessary information to handle transaction
     checkout_info = stripe_event["data"]["object"]
-    client_reference_id = checkout_info.get("client_reference_id")
+    client_reference_id = checkout_info["client_reference_id"]
+    logger.info("Checkout Info (type): \n\n" + str(type(checkout_info)))
     logger.info("Checkout Info: \n\n" + str(checkout_info))
+    logger.info("Checkout Info (keys): \n\n" + str(checkout_info.keys()))
     payment_link_id = checkout_info["payment_link_id"]
     order = uow.orders.get_one(client_reference_id)
     credits_bought = _get_credits_bought(payment_link_id)

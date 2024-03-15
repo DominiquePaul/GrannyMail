@@ -1,0 +1,358 @@
+{
+  "id": "evt_1OuhwaLuDIWxSZxasDEwZAfW",
+  "object": "event",
+  "api_version": "2023-10-16",
+  "created": 1710536736,
+  "data": {
+    "object": {
+      "id": "cs_live_a1AmxN7RXR2srEhKmsDSePR8Xr8qdkmcKqEYFNauLbxLjLwRvBP4DEVgrT",
+      "object": "checkout.session",
+      "after_expiration": null,
+      "allow_promotion_codes": false,
+      "amount_subtotal": 995,
+      "amount_total": 995,
+      "automatic_tax": {
+        "enabled": false,
+        "liability": null,
+        "status": null
+      },
+      "billing_address_collection": "auto",
+      "cancel_url": "https://stripe.com",
+      "client_reference_id": "4b7bc7a5-8ed8-4fdb-bb78-7cfd1442a7a5",
+      "client_secret": null,
+      "consent": null,
+      "consent_collection": {
+        "payment_method_reuse_agreement": null,
+        "promotions": "none",
+        "terms_of_service": "none"
+      },
+      "created": 1710536723,
+      "currency": "eur",
+      "currency_conversion": null,
+      "custom_fields": [
+      ],
+      "custom_text": {
+        "after_submit": null,
+        "shipping_address": null,
+        "submit": null,
+        "terms_of_service_acceptance": null
+      },
+      "customer": null,
+      "customer_creation": "if_required",
+      "customer_details": {
+        "address": {
+          "city": "Lauf",
+          "country": "DE",
+          "line1": "Eichenhainstr 38",
+          "line2": "",
+          "postal_code": "91207",
+          "state": ""
+        },
+        "email": "mona.feder@t-online.de",
+        "name": "Mona Feder",
+        "phone": null,
+        "tax_exempt": "none",
+        "tax_ids": [
+        ]
+      },
+      "customer_email": null,
+      "expires_at": 1710623123,
+      "invoice": null,
+      "invoice_creation": {
+        "enabled": false,
+        "invoice_data": {
+          "account_tax_ids": null,
+          "custom_fields": null,
+          "description": null,
+          "footer": null,
+          "issuer": null,
+          "metadata": {
+          },
+          "rendering_options": null
+        }
+      },
+      "livemode": true,
+      "locale": "auto",
+      "metadata": {
+      },
+      "mode": "payment",
+      "payment_intent": "pi_3OuhwXLuDIWxSZxa0zzdMb3Z",
+      "payment_link": "plink_1OugYDLuDIWxSZxam7YNinB7",
+      "payment_method_collection": "if_required",
+      "payment_method_configuration_details": {
+        "id": "pmc_1ObVu4LuDIWxSZxa2PezAhxV",
+        "parent": null
+      },
+      "payment_method_options": {
+        "card": {
+          "request_three_d_secure": "automatic"
+        }
+      },
+      "payment_method_types": [
+        "card",
+        "bancontact",
+        "eps",
+        "giropay",
+        "ideal",
+        "klarna",
+        "link"
+      ],
+      "payment_status": "paid",
+      "phone_number_collection": {
+        "enabled": false
+      },
+      "recovered_from": null,
+      "setup_intent": null,
+      "shipping_address_collection": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "shipping_options": [
+      ],
+      "status": "complete",
+      "submit_type": "auto",
+      "subscription": null,
+      "success_url": "https://stripe.com",
+      "total_details": {
+        "amount_discount": 0,
+        "amount_shipping": 0,
+        "amount_tax": 0
+      },
+      "ui_mode": "hosted",
+      "url": null
+    }
+  },
+  "livemode": true,
+  "pending_webhooks": 1,
+  "request": {
+    "id": null,
+    "idempotency_key": null
+  },
+  "type": "checkout.session.completed"
+}
+
+
+
+
+{
+      "after_expiration": null,
+
+    {
+      "after_expiration": null,
+      "allow_promotion_codes": false,
+      "amount_subtotal": 995,
+      "amount_total": 995,
+      "automatic_tax": {
+      "allow_promotion_codes": false,
+      "amount_subtotal": 995,
+        "enabled": false,
+        "liability": null,
+        "status": null
+      },
+      "billing_address_collection": "auto",
+      "cancel_url": "https://stripe.com",
+      "client_reference_id": "4b7bc7a5-8ed8-4fdb-bb78-7cfd1442a7a5",
+      "client_secret": null,
+      "consent": null,
+      "consent_collection": {
+        "payment_method_reuse_agreement": null,
+        "promotions": "none",
+        "terms_of_service": "none"
+      "amount_total": 995,
+      "automatic_tax": {
+        "enabled": false,
+        "liability": null,
+        "status": null
+      },
+      "billing_address_collection": "auto",
+      "cancel_url": "https://stripe.com",
+      "client_reference_id": "4b7bc7a5-8ed8-4fdb-bb78-7cfd1442a7a5",
+      "client_secret": null,
+      "consent": null,
+      "consent_collection": {
+        "payment_method_reuse_agreement": null,
+        "promotions": "none",
+        "terms_of_service": "none"
+      },
+      "created": 1710536723,
+      "currency": "eur",
+      "currency_conversion": null,
+      "custom_fields": [],
+      "custom_text": {
+        "after_submit": null,
+        "shipping_address": null,
+        "submit": null,
+        "terms_of_service_acceptance": null
+      },
+      "customer": null,
+      "customer_creation": "if_required",
+      "customer_details": {
+        "address": {
+          "city": "Lauf",
+          "country": "DE",
+          "line1": "Eichenhainstr 38",
+          "line2": "",
+          "postal_code": "91207",
+      },
+      "created": 1710536723,
+      "currency": "eur",
+      "currency_conversion": null,
+      "custom_fields": [],
+      "custom_text": {
+        "after_submit": null,
+        "shipping_address": null,
+        "submit": null,
+        "terms_of_service_acceptance": null
+      },
+      "customer": null,
+      "customer_creation": "if_required",
+      "customer_details": {
+        "address": {
+          "city": "Lauf",
+          "country": "DE",
+          "line1": "Eichenhainstr 38",
+          "line2": "",
+          "postal_code": "91207",
+          "state": ""
+        },
+        "email": "mona.feder@t-online.de",
+        "name": "Mona Feder",
+        "phone": null,
+        "tax_exempt": "none",
+        "tax_ids": []
+          "state": ""
+        },
+        "email": "mona.feder@t-online.de",
+        "name": "Mona Feder",
+        "phone": null,
+        "tax_exempt": "none",
+        "tax_ids": []
+      },
+      "customer_email": null,
+      "expires_at": 1710623123,
+      "id": "cs_live_a1AmxN7RXR2srEhKmsDSePR8Xr8qdkmcKqEYFNauLbxLjLwRvBP4DEVgrT",
+      },
+      "customer_email": null,
+      "expires_at": 1710623123,
+      "id": "cs_live_a1AmxN7RXR2srEhKmsDSePR8Xr8qdkmcKqEYFNauLbxLjLwRvBP4DEVgrT",
+      "invoice": null,
+      "invoice": null,
+      "invoice_creation": {
+        "enabled": false,
+        "invoice_data": {
+          "account_tax_ids": null,
+          "custom_fields": null,
+          "description": null,
+          "footer": null,
+          "issuer": null,
+          "metadata": {},
+          "rendering_options": null
+        }
+      },
+      "livemode": true,
+      "locale": "auto",
+      "metadata": {},
+      "mode": "payment",
+      "object": "checkout.session",
+      "payment_intent": "pi_3OuhwXLuDIWxSZxa0zzdMb3Z",
+      "payment_link": "plink_1OugYDLuDIWxSZxam7YNinB7",
+      "payment_method_collection": "if_required",
+      "payment_method_configuration_details": {
+        "id": "pmc_1ObVu4LuDIWxSZxa2PezAhxV",
+        "parent": null
+      },
+      "payment_method_options": {
+        "card": {
+          "request_three_d_secure": "automatic"
+        }
+      },
+      "payment_method_types": [
+        "card",
+        "bancontact",
+        "eps",
+        "giropay",
+      "invoice_creation": {
+        "enabled": false,
+        "invoice_data": {
+          "account_tax_ids": null,
+          "custom_fields": null,
+          "description": null,
+          "footer": null,
+          "issuer": null,
+          "metadata": {},
+          "rendering_options": null
+        }
+      },
+      "livemode": true,
+      "locale": "auto",
+      "metadata": {},
+      "mode": "payment",
+      "object": "checkout.session",
+      "payment_intent": "pi_3OuhwXLuDIWxSZxa0zzdMb3Z",
+      "payment_link": "plink_1OugYDLuDIWxSZxam7YNinB7",
+      "payment_method_collection": "if_required",
+      "payment_method_configuration_details": {
+        "id": "pmc_1ObVu4LuDIWxSZxa2PezAhxV",
+        "parent": null
+      },
+      "payment_method_options": {
+        "card": {
+          "request_three_d_secure": "automatic"
+        "ideal",
+        "klarna",
+        "link"
+        }
+      },
+      "payment_method_types": [
+        "card",
+        "bancontact",
+        "eps",
+        "giropay",
+        "ideal",
+        "klarna",
+        "link"
+      ],
+      "payment_status": "paid",
+      "phone_number_collection": {
+        "enabled": false
+      },
+      "recovered_from": null,
+      "setup_intent": null,
+      "shipping_address_collection": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "shipping_options": [],
+      "status": "complete",
+      "submit_type": "auto",
+      "subscription": null,
+      "success_url": "https://stripe.com",
+      "total_details": {
+        "amount_discount": 0,
+        "amount_shipping": 0,
+        "amount_tax": 0
+      },
+      "ui_mode": "hosted",
+      "url": null
+    }
+      ],
+      "payment_status": "paid",
+      "phone_number_collection": {
+        "enabled": false
+      },
+      "recovered_from": null,
+      "setup_intent": null,
+      "shipping_address_collection": null,
+      "shipping_cost": null,
+      "shipping_details": null,
+      "shipping_options": [],
+      "status": "complete",
+      "submit_type": "auto",
+      "subscription": null,
+      "success_url": "https://stripe.com",
+      "total_details": {
+        "amount_discount": 0,
+        "amount_shipping": 0,
+        "amount_tax": 0
+      },
+      "ui_mode": "hosted",
+      "url": null
+    }
