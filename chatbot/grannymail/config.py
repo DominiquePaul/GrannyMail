@@ -43,7 +43,7 @@ STRIPE_ENDPOINT_SECRET = os.environ["STRIPE_ENDPOINT_SECRET"]
 
 if DEVMODE == "PROD":
     STRIPE_LINK_SINGLE_PAYMENT = "https://buy.stripe.com/bIY4jQ8LfaQBf9m7sx"
-    STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/8wM03A2mR1g1e5i3ck"
+    STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/00g8A6aTnf6R4uIaEN"
     STRIPE_LINK_10_CREDITS = "https://buy.stripe.com/7sI8A6d1v5wh7GUcMT"
 
 else:
