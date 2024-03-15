@@ -104,6 +104,7 @@ def _get_credits_bought(payment_link_id: str) -> int:
     Returns:
         int: The total number of credits bought.
     """
+    logger.info("Payment link used to retrieve credits: " + payment_link_id)
     items_bought = stripe.PaymentLink.list_line_items(payment_link_id)["data"]
     total_credits = 0
     for item in items_bought:
