@@ -1,7 +1,9 @@
 import sentry_sdk
 from fastapi import FastAPI
+
 import grannymail.config as cfg
-from .endpoints import whatsapp, telegram, payment
+
+from .endpoints import payment, telegram, whatsapp
 
 # setup sentry
 if cfg.SENTRY_ENDPOINT:
@@ -20,9 +22,9 @@ if cfg.SENTRY_ENDPOINT:
 app = FastAPI(title="GrannyMail", lifespan=telegram.lifespan)
 
 # Include routers from your endpoints
-app.include_router(whatsapp.router, prefix="/whatsapp", tags=["whatsapp"])
-app.include_router(telegram.router, prefix="/telegram", tags=["telegram"])
-app.include_router(payment.router, prefix="/payment", tags=["payment"])
+app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["whatsapp"])
+app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
+app.include_router(payment.router, prefix="/api/payment", tags=["payment"])
 
 
 if __name__ == "__main__":

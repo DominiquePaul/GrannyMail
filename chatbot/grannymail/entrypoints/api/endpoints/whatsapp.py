@@ -1,12 +1,11 @@
-from fastapi.responses import JSONResponse
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 import grannymail.integrations.messengers.whatsapp as whatsapp
 from grannymail.integrations.messengers.whatsapp import WebhookRequestData
-from grannymail.services.message_processing_service import MessageProcessingService
 from grannymail.logger import logger
+from grannymail.services.message_processing_service import MessageProcessingService
 from grannymail.services.unit_of_work import SupabaseUnitOfWork
-
 
 router = APIRouter()
 
@@ -24,8 +23,9 @@ async def webhook_route(data: WebhookRequestData):
     else:
         try:
             with SupabaseUnitOfWork() as uow:
+                messenger = whatsapp.Whatsapp()
                 await MessageProcessingService().receive_and_process_message(
-                    uow, data=data
+                    uow, data=data, messenger=messenger
                 )
                 logger.info("Successfully handled query")
             return JSONResponse(content="ok", status_code=200)

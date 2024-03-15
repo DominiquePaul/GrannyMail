@@ -1,9 +1,10 @@
 import typing as t
+
 import stripe
-from grannymail.logger import logger
-import grannymail.domain.models as m
+
 import grannymail.config as cfg
-import grannymail.integrations.pingen as pingen
+import grannymail.domain.models as m
+from grannymail.logger import logger
 from grannymail.services.unit_of_work import AbstractUnitOfWork
 
 stripe.api_key = cfg.STRIPE_API_KEY
@@ -39,7 +40,9 @@ def get_formatted_stripe_link(num_credits: int, client_reference_id: str) -> str
     return body + suffix
 
 
-def handle_event(stripe_event: dict, uow: AbstractUnitOfWork) -> tuple[str, m.Message]:
+def handle_event(
+    stripe_event: dict, uow: AbstractUnitOfWork
+) -> tuple[bool, m.WhatsappMessage | m.TelegramMessage, int, int]:
     """
     Handles a Stripe event, processing payments for orders or credit purchases.
 
@@ -56,70 +59,39 @@ def handle_event(stripe_event: dict, uow: AbstractUnitOfWork) -> tuple[str, m.Me
     if stripe_event["type"] != "checkout.session.completed":
         raise ValueError(f"Invalid event type: {stripe_event['type']}")
 
+    # fetch necessary information to handle transaction
     checkout_info = stripe_event["data"]["object"]
     client_reference_id = checkout_info.get("client_reference_id")
     payment_link_id = checkout_info.get("payment_link_id")
+    order = uow.orders.get_one(client_reference_id)
+    credits_bought = _get_credits_bought(payment_link_id)
 
-    order = uow.orders.maybe_get_one(client_reference_id)
-    original_message = uow.messages.maybe_get_one(client_reference_id)
-
-    if order and original_message:
-        raise ValueError(f"Order and User found for same ID: {client_reference_id}")
-    elif order:
-        return _handle_order_payment(order, uow)
-    elif original_message:
-        return _handle_credit_purchase(payment_link_id, original_message, uow)
-    else:
-        raise ValueError(f"No order or user found for ID: {client_reference_id}")
-
-
-def _handle_order_payment(
-    order: m.Order, uow: AbstractUnitOfWork
-) -> tuple[str, m.Message]:
-    """
-    Processes the payment for an order.
-
-    Args:
-        order: The order for which the payment is processed.
-        client_reference_id (str): The client reference ID associated with the order.
-        uow (AbstractUnitOfWork): The unit of work abstraction to manage database transactions.
-
-    Returns:
-        tuple[str, m.Message]: A tuple containing the type of payment and the original message related to the payment.
-    """
-    order.dispatch(uow)
-    original_message = uow.messages.get(order.message_id)
-    user = uow.users.get(order.user_id)
-    logger.info(f"Payment received for letter_payment by user: {user}")
-    return "letter_payment", original_message
-
-
-def _handle_credit_purchase(
-    payment_link_id, original_message, uow
-) -> tuple[str, m.Message]:
-    """
-    Processes the purchase of credits.
-
-    Args:
-        payment_link_id (str): The payment link ID associated with the credit purchase.
-        original_message: The original message related to the credit purchase.
-        uow (AbstractUnitOfWork): The unit of work abstraction to manage database transactions.
-
-    Returns:
-        tuple[str, m.Message]: A tuple containing the type of purchase and the original message related to the purchase.
-
-    Raises:
-        ValueError: If the payment link ID is missing.
-    """
-    if not payment_link_id:
-        raise ValueError("Payment link ID is missing for credit purchase.")
-    num_credits = _get_credits_bought(payment_link_id)
-    user = uow.users.get(original_message.user_id)
-    user.num_letter_credits += num_credits
+    # update user's number of credits
+    user = uow.users.get_one(order.user_id)
+    user.num_letter_credits += credits_bought
     user = uow.users.update(user)
-    item = f"{num_credits}_credit_purchase"
-    logger.info(f"Payment received for {item} by user: {user}")
-    return item, original_message
+    logger.info(f"Payment received for {credits_bought} credit(s) by user: {user}")
+
+    # get original message - we don't know what the platform is, so we need to check first and retrieve a second time
+    # this could/should be edited in the uow repository but this is the only occurrence in the codebase so far.
+    og_message_base = uow.messages.get_one(order.message_id)
+    if og_message_base.messaging_platform == "WhatsApp":
+        og_message = uow.wa_messages.get_one(order.message_id)
+    elif og_message_base.messaging_platform == "Telegram":
+        og_message = uow.wa_messages.get_one(order.message_id)
+    else:
+        raise ValueError(
+            f"Unsupported message platform: {og_message_base.messaging_platform}"
+        )
+
+    # dispatch letter
+    was_dispatched = order.dispatch(uow)
+
+    if was_dispatched:
+        user.num_letter_credits -= 1
+        user = uow.users.update(user)
+    # return the messaging platform of the original request and the number of credits
+    return was_dispatched, og_message, credits_bought, user.num_letter_credits
 
 
 def _get_credits_bought(payment_link_id: str) -> int:

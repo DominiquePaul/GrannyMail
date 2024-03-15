@@ -1,16 +1,15 @@
-from grannymail.services.unit_of_work import AbstractUnitOfWork
-from grannymail.domain import models as m
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic
+from typing import Generic, TypeVar
 
-M = TypeVar("M", bound=m.Message)
+from grannymail.domain import models as m
+from grannymail.services.unit_of_work import AbstractUnitOfWork
 
 
-class AbstractMessenger(ABC, Generic[M]):
+class AbstractMessenger(ABC, Generic[m.MessageType]):
     @abstractmethod
     async def reply_text(
-        self, ref_message: M, message_body: str, uow: AbstractUnitOfWork
-    ) -> M:
+        self, ref_message: m.MessageType, message_body: str, uow: AbstractUnitOfWork
+    ) -> m.MessageType:
         """
         Send a text message to the recipient.
         """
@@ -19,28 +18,30 @@ class AbstractMessenger(ABC, Generic[M]):
     @abstractmethod
     async def reply_document(
         self,
-        ref_message: M,
+        ref_message: m.MessageType,
         file_data: bytes,
         filename: str,
         mime_type: str,
         uow: AbstractUnitOfWork,
-    ) -> M:
+    ) -> m.MessageType:
         pass
 
     @abstractmethod
     async def reply_buttons(
         self,
-        ref_message: M,
+        ref_message: m.MessageType,
         main_msg: str,
         cancel_msg: str,
         confirm_msg: str,
         uow: AbstractUnitOfWork,
-    ) -> M:
+    ) -> m.MessageType:
         """
         Send a message with a confirmation request to the user.
         """
         pass
 
     @abstractmethod
-    async def reply_edit_or_text(self, ref_message: M, message_body: str, uow) -> M:
+    async def reply_edit_or_text(
+        self, ref_message: m.MessageType, message_body: str, uow
+    ) -> m.MessageType:
         pass

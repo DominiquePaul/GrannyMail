@@ -1,23 +1,26 @@
 import json
-import datetime
+import typing as t
+import uuid
+
 import httpx
-from uuid import uuid4
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, ApplicationBuilder
 from telegram.ext._contexttypes import ContextTypes
-from telegram.ext import ApplicationBuilder, Application
+
+import grannymail.config as cfg
+import grannymail.constants as c
+import grannymail.domain.models as m
+from grannymail.services.unit_of_work import AbstractUnitOfWork
+from grannymail.utils import message_utils, utils
 
 from .base import AbstractMessenger
-from grannymail.services.unit_of_work import AbstractUnitOfWork
-import grannymail.domain.models as m
-from grannymail.utils import message_utils
-import grannymail.config as cfg
 
 
 class Telegram(AbstractMessenger):
     def _build_application(self) -> Application:
         return ApplicationBuilder().token(cfg.BOT_TOKEN).build()
 
-    def _get_message_type(self, update) -> tuple[str, str | None]:
+    def _get_message_type(self, update) -> tuple[c.types_message, str | None]:
         """
         Determines the type of message received in the update and extracts relevant information.
 
@@ -36,22 +39,22 @@ class Telegram(AbstractMessenger):
             message = update.message
             assert message is not None, "No message found"
             if message.voice:
-                return "voice", message.voice.mime_type
+                return "audio", message.voice.mime_type
             if message.photo:
                 return "image", message.photo[-1].mime_type
             elif message.document:
-                return "file", message.document.mime_type
+                return "document", message.document.mime_type
             elif message.text:
                 return "text", None
             else:
                 return "unknown", None
         elif update.callback_query is not None:
             self.callback_query = update.callback_query
-            return "callback", None
+            return "interactive", None
         else:
             return "unknown", None
 
-    async def _download_file(
+    async def _download_media(
         self, file_id: str, context: ContextTypes.DEFAULT_TYPE
     ) -> bytes:
         """
@@ -72,17 +75,17 @@ class Telegram(AbstractMessenger):
             response = await client.get(file.file_path)  # type: ignore
         return response.content
 
-    async def _download_media(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE, media_type: str
-    ) -> list[bytes]:
-        media_bytes_list = []
-        assert update.message is not None, "No message found"
-        if media_type == "image" and update.message.photo:
-            for photo in update.message.photo:
-                file_id = photo.file_id
-                media_bytes = await self._download_file(file_id, context)
-                media_bytes_list.append(media_bytes)
-        return media_bytes_list
+    # async def _download_media_old(
+    #     self, update: Update, context: ContextTypes.DEFAULT_TYPE, media_type: str
+    # ) -> list[bytes]:
+    #     media_bytes_list = []
+    #     assert update.message is not None, "No message found"
+    #     if media_type == "image" and update.message.photo:
+    #         for photo in update.message.photo:
+    #             file_id = photo.file_id
+    #             media_bytes = await self._download_media(file_id, context)
+    #             media_bytes_list.append(media_bytes)
+    #     return media_bytes_list
 
     async def process_message(
         self,
@@ -98,7 +101,7 @@ class Telegram(AbstractMessenger):
         telegram_id: str = update.effective_user.username
         timestamp, message_id = self._extract_timestamp_and_id(update)
 
-        user = self._get_or_create_user(uow, telegram_id, update)
+        user = self._get_or_create_user(uow, telegram_id, update, timestamp)
 
         message_type, attachment_mime_type = self._get_message_type(update)
         assert update.effective_chat, "No effective chat found"
@@ -112,13 +115,15 @@ class Telegram(AbstractMessenger):
             message_id,  # todo this should be a unique value
         )
 
-        if update.callback_query:
-            await self._process_callback_query(update, message, uow)
-
-        if message_type == "text":
-            self._process_text_message(update, message)
-        elif message_type == "voice":
-            await self._process_voice_message(update, message, context, uow)
+        if message_type == "interactive":
+            assert (
+                update.callback_query is not None
+            ), "Message type is 'interactive' but no callback query found"
+            message = await self._process_callback_query(update, message, uow)
+        elif message_type == "text":
+            message = self._process_text_message(update, message)
+        elif message_type == "audio":
+            message = await self._process_voice_message(update, message, context, uow)
         elif message_type in ["file", "image"]:
             # Placeholder for future file or image processing
             pass
@@ -129,24 +134,30 @@ class Telegram(AbstractMessenger):
 
     def _extract_timestamp_and_id(self, update: Update) -> tuple[str, int]:
         """Extracts timestamp and message ID from the update."""
-        assert update.callback_query is not None
-        assert update.callback_query.id is not None
-        assert update.callback_query.message is not None
         if bool(update.message):
-            return str(update.message.date), update.message.message_id
+            return update.message.date.isoformat(), update.message.message_id
+        elif bool(update.callback_query):
+            assert update.callback_query.message is not None, "no message"
+            return (
+                update.callback_query.message.date.isoformat(),
+                update.callback_query.message.message_id,
+            )
         else:
-            return str(datetime.datetime.utcnow()), update.callback_query.message.id
+            assert update.callback_query is not None
+            assert update.callback_query.id is not None
+            assert update.callback_query.message is not None
+            return utils.get_utc_timestamp(), update.callback_query.message.id
 
     def _get_or_create_user(
-        self, uow: AbstractUnitOfWork, telegram_id: str, update: Update
+        self, uow: AbstractUnitOfWork, telegram_id: str, update: Update, timestamp: str
     ) -> m.User:
         """Retrieves an existing user or creates a new one if not found."""
         user = uow.users.maybe_get_one(id=None, filters={"telegram_id": telegram_id})
         assert update.effective_user is not None
         if not user:
             user = m.User(
-                user_id=str(uuid4()),
-                created_at=str(datetime.datetime.utcnow()),
+                user_id=str(uuid.uuid4()),
+                created_at=timestamp,
                 first_name=update.effective_user.first_name or "Unknown",
                 last_name=update.effective_user.last_name or "Unknown",
                 telegram_id=telegram_id,
@@ -159,7 +170,7 @@ class Telegram(AbstractMessenger):
         user: m.User,
         telegram_id: str,
         timestamp: str,
-        message_type: str,
+        message_type: c.types_message,
         attachment_mime_type: str | None,
         update: Update,
         message_id: int,
@@ -167,7 +178,7 @@ class Telegram(AbstractMessenger):
         """Creates an instance of TelegramMessage."""
         assert update.effective_chat is not None
         return m.TelegramMessage(
-            message_id=str(uuid4()),
+            message_id=str(uuid.uuid4()),
             user_id=user.user_id,
             sent_by="user",
             timestamp=timestamp,
@@ -180,28 +191,32 @@ class Telegram(AbstractMessenger):
 
     async def _process_callback_query(
         self, update: Update, message: m.TelegramMessage, uow: AbstractUnitOfWork
-    ):
+    ) -> m.TelegramMessage:
         """Processes the callback query."""
         assert update.callback_query is not None
         assert update.callback_query.data is not None
         await update.callback_query.answer()
         query_data = json.loads(update.callback_query.data)
-        message_replied_to = uow.messages.get(query_data["mid"])
+        message_replied_to = uow.messages.get_one(query_data["mid"])
         if not message_replied_to:
             raise ValueError("Replied-to message not found")
         if not message_replied_to.command:
             raise ValueError("No command associated with replied-to message")
         message.response_to = query_data["mid"]
-        message.action_confirmed = query_data["conf"]
+        message.action_confirmed = True if query_data["conf"] == "true" else False
         message.command = f"{message_replied_to.command}_callback"
+        return message
 
-    def _process_text_message(self, update: Update, message: m.TelegramMessage):
+    def _process_text_message(
+        self, update: Update, message: m.TelegramMessage
+    ) -> m.TelegramMessage:
         """Processes text messages."""
         assert update.message is not None
         assert update.message.text is not None
         message.command, message.message_body = message_utils.parse_command(
             update.message.text
         )
+        return message
 
     async def _process_voice_message(
         self,
@@ -209,26 +224,27 @@ class Telegram(AbstractMessenger):
         message: m.TelegramMessage,
         context: ContextTypes.DEFAULT_TYPE,
         uow: AbstractUnitOfWork,
-    ):
+    ) -> m.TelegramMessage:
         """Processes voice messages."""
+        message.command = "voice"
         assert update.message is not None
         assert update.message.voice is not None
-        voice_bytes = await self._download_file(update.message.voice.file_id, context)
+        voice_bytes = await self._download_media(update.message.voice.file_id, context)
         if update.message.voice.duration is None:
             raise ValueError("Voice message duration is None")
         message.memo_duration = update.message.voice.duration
 
         # Upload voice memo and add file record
-        path = uow.files_blob.create_blob_path(message.user_id)
         mime_type = "audio/ogg"
-        uow.files_blob.upload(voice_bytes, path, mime_type)
+        path = uow.files_blob.upload(voice_bytes, message.user_id, mime_type)
         file_record = m.File(
-            file_id=str(uuid4()),
+            file_id=str(uuid.uuid4()),
             message_id=message.message_id,
             mime_type=mime_type,
             blob_path=path,
         )
         uow.files.add(file_record)
+        return message
 
     async def reply_text(
         self, ref_message: m.TelegramMessage, message_body: str, uow: AbstractUnitOfWork
@@ -238,8 +254,8 @@ class Telegram(AbstractMessenger):
         )
 
         response = m.TelegramMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             message_body=message_body,
@@ -260,8 +276,8 @@ class Telegram(AbstractMessenger):
     ) -> m.TelegramMessage:
         r = await self.callback_query.edit_message_text(text=message_body)
         response = m.TelegramMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             message_type="text",
             sent_by="system",
@@ -289,8 +305,8 @@ class Telegram(AbstractMessenger):
             chat_id=ref_message.tg_chat_id, document=document_bytes, filename=filename
         )
         response = m.TelegramMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             attachment_mime_type=mime_type,
@@ -327,7 +343,8 @@ class Telegram(AbstractMessenger):
             reference_mid (str): The reference message ID to be included in the callback data.
         """
         assert ref_message.tg_chat_id is not None
-        message_id = str(uuid4())
+        message_id = str(uuid.uuid4())
+        # message_id = ref_message.message_id
         keyboard = [
             [
                 InlineKeyboardButton(
@@ -340,8 +357,8 @@ class Telegram(AbstractMessenger):
                 ),
             ],
         ]
-        # send message
 
+        # send message
         r = await self._build_application().bot.sendMessage(
             chat_id=ref_message.tg_chat_id,
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -350,7 +367,7 @@ class Telegram(AbstractMessenger):
 
         response = m.TelegramMessage(
             message_id=message_id,
-            timestamp=str(datetime.datetime.utcnow()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             message_body=main_msg,

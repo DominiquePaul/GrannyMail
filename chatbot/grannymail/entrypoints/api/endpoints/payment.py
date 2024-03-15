@@ -1,12 +1,13 @@
 import stripe
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import grannymail.config as cfg
-from grannymail.logger import logger
+import grannymail.domain.models as m
 import grannymail.integrations.stripe_payments as sp
+from grannymail.integrations.messengers import telegram, whatsapp
+from grannymail.logger import logger
 from grannymail.services.unit_of_work import SupabaseUnitOfWork
-from grannymail.services.message_processing_service import MessageProcessingService
 
 router = APIRouter()
 
@@ -22,20 +23,30 @@ async def process_stripe_event(event, uow):
     Raises:
         ValueError: If the item processed is not recognized.
     """
-    item, ref_message = sp.handle_event(event, uow)
-    if item not in ["letter_payment", "5_credit_purchase", "10_credit_purchase"]:
-        raise ValueError(f"Item {item} not found. Cannot reply")
+    was_dispatched, ref_message, credits_bought, user_credits = sp.handle_event(
+        event, uow
+    )
 
-    credits = item.split("_")[0] if "credit_purchase" in item else ""
-    msg_key = "credit_purchase" if "credit_purchase" in item else item
-    msg = uow.system_messages.get_msg(msg_key).format(credits)
+    # fetch the response content for the user
+    if was_dispatched:
+        msg_id = "stripe_webhook-success"
+    else:
+        msg_id = "stripe_webhook-success-no_dispatch"
+    msg = uow.system_messages.get_msg(msg_id).format(credits_bought, user_credits)
 
-    await MessageProcessingService()._get_messenger(
-        ref_message.messaging_platform
-    ).reply_text(ref_message, msg, uow)
+    # Determine the messenger so we reply on the platform on which we got the message
+    platform = ref_message.messaging_platform
+    if isinstance(ref_message, m.WhatsappMessage):
+        messenger = whatsapp.Whatsapp()
+        await messenger.reply_text(ref_message, msg, uow)
+    elif isinstance(ref_message, m.TelegramMessage):
+        messenger = telegram.Telegram()
+        await messenger.reply_text(ref_message, msg, uow)
+    else:
+        raise ValueError(f"Message platform {platform} not found")
 
 
-@router.post("/stripe_webhook/")
+@router.post("/stripe_webhook")
 async def webhook(request: Request):
     """
     Endpoint to handle Stripe webhook events.

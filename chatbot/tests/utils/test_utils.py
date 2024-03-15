@@ -6,19 +6,10 @@ from grannymail.utils.utils import get_message_spreadsheet, get_prompt_from_shee
 def test_get_message_spreadsheet():
     df = get_message_spreadsheet()
     assert isinstance(df, pd.DataFrame)
-    assert all(
-        [x in df.columns for x in ["full_message_name", "Description", "version_main"]]
-    )
+    assert all([x in df.columns for x in ["message_identifier", "message_body"]])
 
 
 def test_get_prompt_from_sheet():
     prompt = get_prompt_from_sheet("help-success")
     assert isinstance(prompt, str)
     assert len(prompt) > 10
-
-
-def message_id_generator(start=11111):
-    current = start
-    while True:
-        yield current
-        current += 1

@@ -1,6 +1,6 @@
 import grannymail.domain.models as m
-from grannymail.utils.utils import get_message_spreadsheet
 from grannymail.services.unit_of_work import AbstractUnitOfWork, SupabaseUnitOfWork
+from grannymail.utils.utils import get_message_spreadsheet
 
 
 def synchronise_sheet_with_db(uow: AbstractUnitOfWork):

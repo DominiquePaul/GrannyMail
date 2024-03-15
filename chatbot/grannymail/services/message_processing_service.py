@@ -1,17 +1,16 @@
-import typing as t
+from difflib import get_close_matches
+import uuid
+
 import grannymail.domain.models as m
-from grannymail.integrations.messengers import whatsapp, telegram
-from grannymail.services.unit_of_work import AbstractUnitOfWork
-import grannymail.utils.message_utils as msg_utils
-from datetime import datetime
-from uuid import uuid4
-import typing as t
-from grannymail.domain import models as m
-import grannymail.utils.message_utils as msg_utils
 import grannymail.integrations.pdf_gen as pdf_gen
 import grannymail.integrations.stripe_payments as stripe_payments
-from grannymail.logger import logger
+import grannymail.utils.message_utils as msg_utils
+from grannymail.domain import models as m
+from grannymail.integrations.messengers import telegram, whatsapp
 from grannymail.integrations.messengers.base import AbstractMessenger
+from grannymail.logger import logger
+from grannymail.services.unit_of_work import AbstractUnitOfWork
+from grannymail.utils import utils
 
 
 class NoTranscriptFound(Exception):
@@ -25,78 +24,96 @@ class MessageProcessingService:
             method for method in dir(self) if method.startswith("handle_")
         ]
 
-    def _get_messenger(
-        self, platform: t.Literal["WhatsApp", "Telegram"]
-    ) -> AbstractMessenger:
-        services = {
-            "WhatsApp": whatsapp.Whatsapp(),
-            "Telegram": telegram.Telegram(),
-        }
-        return services[platform]
-
     async def receive_and_process_message(
-        self, uow: AbstractUnitOfWork, update=None, context=None, data=None
+        self,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+        update=None,
+        context=None,
+        data=None,
     ):
-        message = await self._process_message(uow, update, context, data)
+        message = await self._process_message(uow, messenger, update, context, data)
 
         #  For messages triggering a process we send the user a signal
         # that we are processing their request
         command_confirmations = {
             "voice": "voice-confirm",
-            "/edit": "edit-confirm",
+            "edit": "edit-confirm",
         }
         if message.command in command_confirmations:
             msg_body = uow.system_messages.get_msg(
                 command_confirmations[message.command]
             )
-            reply = await self._get_messenger(message.messaging_platform).reply_text(
-                message, msg_body, uow
-            )
-            with uow:
-                uow.messages.add(reply)
-                uow.commit()
+            await messenger.reply_text(message, msg_body, uow)
 
         assert message.command is not None, "No command, not sure how to route command"
-
-        if message.command in self.command_handlers:
-            return await getattr(self, message.command)(message, uow)
+        command_search_term = "handle_" + message.command
+        if command_search_term in self.command_handlers:
+            return await getattr(self, command_search_term)(message, uow, messenger)
         else:
-            return await self.process_unknown_command(message, uow)
+            return await self.process_unknown_command(message, messenger, uow)
 
     async def process_unknown_command(
-        self, message: m.Message, uow: AbstractUnitOfWork
-    ):
+        self,
+        message: m.MessageType,
+        messenger: AbstractMessenger,
+        uow: AbstractUnitOfWork,
+    ) -> m.MessageType:
         """We want to run a fuzzy search through all commands and respond with a message
         guiding the user to fix their mistake
         """
-        msg_body = uow.system_messages.get_msg("no_command-success")
-        await self._get_messenger(message.messaging_platform).reply_text(
-            message, msg_body, uow
-        )
+        assert message.command is not None, "No command, not sure how to route command"
+        if message.command == "_no_command":
+            msg_body = uow.system_messages.get_msg("no_command-success")
+        else:
+            all_commands = [x.replace("handle_", "") for x in self.command_handlers]
+            closest_match = get_close_matches(
+                message.command, all_commands, n=1, cutoff=0.0
+            )[0]
+            msg_body = uow.system_messages.get_msg("unknown_command-success").format(
+                closest_match
+            )
+        return await messenger.reply_text(message, msg_body, uow)
 
     async def _process_message(
-        self, uow: AbstractUnitOfWork, update=None, context=None, data=None
-    ) -> m.Message:
+        self,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+        update=None,
+        context=None,
+        data=None,
+    ) -> m.BaseMessage:
         """Parses everything except media of a message received via Telegram/Whatsapp"""
-        if update is not None and context is not None and data is None:
-            return await telegram.Telegram().process_message(update, context, uow)
-        elif update is None and context is None and data is not None:
-            return await whatsapp.Whatsapp().process_message(data, uow)
+        if isinstance(messenger, telegram.Telegram):
+            assert update is not None, "Update is None"
+            assert context is not None, "Context is None"
+            return await messenger.process_message(update, context, uow)
+        elif isinstance(messenger, whatsapp.Whatsapp):
+            assert data is not None, "Data is None"
+            return await messenger.process_message(data, uow)
         else:
-            raise ValueError(
-                "Either both update and context OR request must be provided, but not both sets together."
-            )
+            raise ValueError("Messenger is neither whatsapp or telegram messenger")
 
-    async def handle_help(self, ref_message: m.Message, uow: AbstractUnitOfWork):
+    async def handle_help(
+        self,
+        ref_message: m.MessageType,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ) -> m.MessageType:
         msg_body = uow.system_messages.get_msg("help-success")
-        await self._get_messenger(ref_message.messaging_platform).reply_text(
-            ref_message, msg_body, uow
-        )
+        return await messenger.reply_text(ref_message, msg_body, uow)
 
-    def _is_message_empty(self, message: m.Message) -> bool:
-        return message.safe_message_body == ""
+    def _is_message_empty(self, message: m.BaseMessage) -> bool:
+        if message.message_body is None or message.message_body.replace(" ", "") == "":
+            return True
+        return False
 
-    async def handle_report_bug(self, ref_message: m.Message, uow: AbstractUnitOfWork):
+    async def handle_report_bug(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
         # check that message is not empty
         msg_id = (
             "report_bug-error-msg_empty"
@@ -104,27 +121,33 @@ class MessageProcessingService:
             else "report_bug-success"
         )
         msg_body = uow.system_messages.get_msg(msg_id)
-        await self._get_messenger(ref_message.messaging_platform).reply_text(
-            ref_message, msg_body, uow
-        )
+        await messenger.reply_text(ref_message, msg_body, uow)
 
-    async def handle_edit_prompt(self, ref_message: m.Message, uow: AbstractUnitOfWork):
+    async def handle_edit_prompt(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
         if self._is_message_empty(ref_message):
             msg_body = uow.system_messages.get_msg("edit_prompt-error-msg_empty")
         else:
             new_prompt = ref_message.safe_message_body
 
-            user = uow.users.get(ref_message.user_id)
+            user = uow.users.get_one(ref_message.user_id)
             user.prompt = new_prompt
             uow.users.update(user)
             msg_body = uow.system_messages.get_msg("edit_prompt-success").format(
                 new_prompt
             )
-        await self._get_messenger(ref_message.messaging_platform).reply_text(
-            ref_message, msg_body, uow
-        )
+        await messenger.reply_text(ref_message, msg_body, uow)
 
-    async def handle_voice(self, ref_message: m.Message, uow: AbstractUnitOfWork):
+    async def handle_voice(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
         """Processes all steps related to receiving a voice message
 
         Key steps:
@@ -143,38 +166,7 @@ class MessageProcessingService:
         4. Turn transcription into a letter
         5. Save letter to blob storage and add an entry in SQL
         6. Send the letter to the user
-
-        Idea:
-        message = communication.parse_message(platform=whatsapp, request)
-        communication.reply_text("Got the message!")
-        if message.has_media:
-            message = communication.handle_media(message, platform=whatsapp)
-        draft, letter_bytes = document_service.transcription_to_letter(message.transcript, user_id)
-        path = uow.drafts.add_draft_as_blob(letter_bytes)
-        communication.send_document(letter_bytes, user_id, platform)
-
-        Idea 2:
-        # starts an asynchronous task in the background
-        command, user_id, coroutine = communication.parse_message(request, platform=whatsapp)
-        # optionally send a message to user
-        # Problem (?): registering the voice message that is sent
-        if command == "voice":
-            msg_body = abc
-        elif command == "/edit":
-            msg_body = xyz
-        communication.reply_text(msg_body, user_id, platform)
-
-        # await coroutine
-        message = await coroutine
-
-        # Handle actual command:
-        draft, letter_bytes = document_service.transcription_to_letter(message.transcript, user_id)
-        path = uow.drafts.add_draft_as_blob(letter_bytes)
-        communication.send_document(letter_bytes, user_id, platform)
-
         """
-        messenger = self._get_messenger(ref_message.messaging_platform)
-
         # Check memo's duration
         assert ref_message.memo_duration is not None, "Memo duration is None"
         if ref_message.memo_duration < 5:  # type: ignore
@@ -208,12 +200,13 @@ class MessageProcessingService:
 
         ##############
         # 1. Upload file to blob storage
-        blob_path = uow.drafts_blob.create_blob_path(ref_message.user_id)
-        uow.drafts_blob.upload(draft_bytes, blob_path, "application/pdf")
+        blob_path = uow.drafts_blob.upload(
+            draft_bytes, ref_message.user_id, "application/pdf"
+        )
 
         # 2. Register the draft in the DB
         draft = m.Draft(
-            draft_id=str(uuid4()),
+            draft_id=str(uuid.uuid4()),
             user_id=ref_message.user_id,
             created_at=ref_message.timestamp,
             text=letter_text,
@@ -231,22 +224,30 @@ class MessageProcessingService:
         )
         await messenger.reply_text(ref_message, msg_body, uow)
 
-    async def handle_edit(self, ref_message: m.Message, uow: AbstractUnitOfWork):
-        messenger = self._get_messenger(ref_message.messaging_platform)
+    async def handle_edit(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
+        if self._is_message_empty(ref_message):
+            msg_body = uow.system_messages.get_msg("edit-error-msg_empty")
+            await messenger.reply_text(ref_message, msg_body, uow)
+            return None
+
         # fetch the last draft that we're editing
-        old_draft = uow.drafts.get(
-            id=None, filters={"user": ref_message.user_id}, order={"created_at": "asc"}
+        old_drafts = uow.drafts.get_all(
+            filters={"user_id": ref_message.user_id},
+            order={"created_at": "desc"},
         )
 
         # If we find no previous draft we respond with an error
-        if old_draft is None:
+        if len(old_drafts) == 0:
             error_msg = uow.system_messages.get_msg("edit-error-no_draft_found")
             await messenger.reply_text(ref_message, error_msg, uow)
             return None
 
-        # Send a message to let user know that command was received and something is happening
-        msg_body = uow.system_messages.get_msg("edit-confirm")
-        await messenger.reply_text(ref_message, msg_body, uow)
+        old_draft = old_drafts[0]
         old_content: str = old_draft.text  # type: ignore
 
         # Generate the new letter content
@@ -257,12 +258,13 @@ class MessageProcessingService:
         new_draft_bytes = pdf_gen.create_letter_pdf_as_bytes(new_letter_content)
 
         # 1. Upload file to blob storage
-        full_path = uow.drafts_blob.create_blob_path(ref_message.user_id)
-        uow.drafts_blob.upload(new_draft_bytes, full_path, "application/pdf")
+        full_path = uow.drafts_blob.upload(
+            new_draft_bytes, ref_message.user_id, "application/pdf"
+        )
 
         # 2. Register the draft in the DB
         draft = m.Draft(
-            draft_id=str(uuid4()),
+            draft_id=str(uuid.uuid4()),
             user_id=ref_message.user_id,
             created_at=ref_message.timestamp,
             text=new_letter_content,
@@ -284,9 +286,11 @@ class MessageProcessingService:
         await messenger.reply_text(ref_message, msg_body, uow)
 
     async def handle_show_address_book(
-        self, ref_message: m.Message, uow: AbstractUnitOfWork
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
     ):
-        messenger = self._get_messenger(ref_message.messaging_platform)
         # Get the user's address book
         address_book = uow.addresses.get_all(
             filters={"user_id": ref_message.user_id}, order={"created_at": "asc"}
@@ -307,8 +311,12 @@ class MessageProcessingService:
             ).format(formatted_address_book, first_name)
             return await messenger.reply_text(ref_message, success_message, uow)
 
-    async def handle_add_address(self, ref_message: m.Message, uow: AbstractUnitOfWork):
-        messenger = self._get_messenger(ref_message.messaging_platform)
+    async def handle_add_address(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
         user_error_message = msg_utils.error_in_address(
             ref_message.safe_message_body, uow=uow
         )
@@ -340,20 +348,21 @@ class MessageProcessingService:
         )
 
     async def handle_add_address_callback(
-        self, ref_message: m.Message, uow: AbstractUnitOfWork
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
     ):
-        messenger = self._get_messenger(ref_message.messaging_platform)
         if ref_message.action_confirmed:
-
             # fetch the reply to the original message that contained the address
             response_to_msg_id = ref_message.response_to
             assert response_to_msg_id is not None, "'response_to_msg_id' can't be None"
-            og_msg_response = uow.messages.get(response_to_msg_id)
+            og_msg_response = uow.messages.get_one(response_to_msg_id)
             assert (
                 og_msg_response.response_to is not None
             ), "id for message can't be None"
             # fetch the original message with the address
-            original_message = uow.messages.get(og_msg_response.response_to)
+            original_message = uow.messages.get_one(og_msg_response.response_to)
             assert (
                 original_message is not None
             ), "Original message retrieved in address callback is None"
@@ -385,9 +394,11 @@ class MessageProcessingService:
             return None
 
     async def handle_delete_address(
-        self, ref_message: m.Message, uow: AbstractUnitOfWork
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
     ):
-        messenger = self._get_messenger(ref_message.messaging_platform)
         # check msg not empty
         if ref_message.safe_message_body == "":
             msg_body = uow.system_messages.get_msg("delete_address-error-msg_empty")
@@ -410,13 +421,14 @@ class MessageProcessingService:
             logger.info(
                 f"Could not convert message {ref_message.safe_message_body} to int. Used fuzzy search and identified address num. {reference_idx} for deletion"
             )
+
         if not 0 < reference_idx <= len(address_book):
             msg_body = uow.system_messages.get_msg("delete_address-error-invalid_idx")
             await messenger.reply_text(ref_message, msg_body, uow)
             return None
+
         address_to_delete = address_book[reference_idx - 1]
         uow.addresses.delete(address_to_delete.address_id)
-
         # Let the user know that the address was deleted
         msg_body = uow.system_messages.get_msg("delete_address-success")
         await messenger.reply_text(ref_message, msg_body, uow)
@@ -431,26 +443,30 @@ class MessageProcessingService:
         ).format(formatted_address_book)
         await messenger.reply_text(ref_message, message_new_adressbook, uow)
 
-    async def handle_send(self, ref_message: m.Message, uow: AbstractUnitOfWork):
+    async def handle_send(
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
+    ):
         """Hierarch of checks:
         1. Is there a message body? (required to identify message)
         2. Does the user have a previous draft?
         3. Does the user have any addresses saved?
         """
-        messenger = self._get_messenger(ref_message.messaging_platform)
-        user = m.User(ref_message.user_id, created_at=str(datetime.utcnow()))
+        user = uow.users.get_one(ref_message.user_id)
 
         # 1. Is message empty?
-        if ref_message.safe_message_body == "":
+        if self._is_message_empty(ref_message):
             msg_body = uow.system_messages.get_msg("send-error-msg_empty")
             await messenger.reply_text(ref_message, msg_body, uow)
             return None
 
         # 2. Is there a previous draft?
-        last_draft = uow.drafts.get(
-            id=None, filters={"user": ref_message.user_id}, order={"created_at": "desc"}
+        all_drafts = uow.drafts.get_all(
+            filters={"user_id": ref_message.user_id}, order={"created_at": "desc"}
         )
-        if last_draft is None:
+        if not all_drafts:
             msg_body = uow.system_messages.get_msg("send-error-no_draft")
             await messenger.reply_text(ref_message, msg_body, uow)
             return None
@@ -478,16 +494,16 @@ class MessageProcessingService:
         address = address_book[address_idx]
 
         # Create a letter with the address and the draft text
+        last_draft = all_drafts[0]
         draft_bytes = pdf_gen.create_letter_pdf_as_bytes(
             last_draft.text, address  # type: ignore
         )
         # 1. Upload file to blob storage
-        full_path = uow.drafts_blob.create_blob_path(user.user_id)
-        uow.drafts_blob.upload(draft_bytes, full_path, "application/pdf")
+        full_path = uow.drafts_blob.upload(draft_bytes, user.user_id, "application/pdf")
 
         # 2. Register the draft in the DB
         draft = m.Draft(
-            draft_id=str(uuid4()),
+            draft_id=str(uuid.uuid4()),
             user_id=user.user_id,
             created_at=ref_message.timestamp,
             text=last_draft.text,
@@ -502,14 +518,16 @@ class MessageProcessingService:
 
         payment_type = "credits" if user.num_letter_credits > 0 else "direct"
         order = m.Order(
-            order_id=str(uuid4()),
+            order_id=str(uuid.uuid4()),
             user_id=draft.user_id,
             draft_id=draft.draft_id,
             message_id=ref_message.message_id,
             address_id=address.address_id,
             status="payment_pending",
             payment_type=payment_type,
+            blob_path=draft.blob_path,
         )
+        uow.orders.add(order)
 
         ref_message.draft_referenced = draft.draft_id
         ref_message.order_referenced = order.order_id
@@ -528,9 +546,9 @@ class MessageProcessingService:
                 " " + user.first_name if user.first_name is not None else ""
             )
             msg_body = uow.system_messages.get_msg("send-success-credits").format(
-                user.num_letter_credits,
                 user_first_name,
-                address.format_address_simple(),
+                user.num_letter_credits,
+                address.format_address_as_string(),
             )
             option_confirm = uow.system_messages.get_msg("send-option-confirm_sending")
             option_cancel = uow.system_messages.get_msg("send-option-cancel_sending")
@@ -546,22 +564,34 @@ class MessageProcessingService:
             stripe_link_single_credit = stripe_payments.get_formatted_stripe_link(
                 num_credits=1, client_reference_id=order.order_id
             )
+            stripe_5_credit_link = stripe_payments.get_formatted_stripe_link(
+                num_credits=5, client_reference_id=order.order_id
+            )
+            stripe_10_credit_link = stripe_payments.get_formatted_stripe_link(
+                num_credits=10, client_reference_id=order.order_id
+            )
             msg_body = uow.system_messages.get_msg("send-success-one_off").format(
-                stripe_link_single_credit
+                stripe_link_single_credit, stripe_5_credit_link, stripe_10_credit_link
             )
             return await messenger.reply_text(ref_message, msg_body, uow)
         else:
             raise ValueError(f"Payment type {payment_type} not recognized")
 
     async def handle_send_callback(
-        self, ref_message: m.Message, uow: AbstractUnitOfWork
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
     ):
-        messenger = self._get_messenger(ref_message.messaging_platform)
         if ref_message.action_confirmed:
             # fetch the reply to the original message that contained the address
-            original_message = uow.messages.get(ref_message.response_to)
-            assert original_message.order_referenced is not None
-            order: m.Order = uow.orders.get(ref_message.order_referenced)
+            response_to_og_send_message = uow.messages.get_one(ref_message.response_to)
+            assert (
+                response_to_og_send_message.order_referenced is not None
+            ), "No order referenced in message"
+            order: m.Order = uow.orders.get_one(
+                response_to_og_send_message.order_referenced
+            )
             order.dispatch(uow=uow)
             msg_body = uow.system_messages.get_msg("send_callback-confirm")
 
@@ -570,9 +600,10 @@ class MessageProcessingService:
         await messenger.reply_edit_or_text(ref_message, msg_body, uow)
 
     async def handle_commmand_not_recognised(
-        self, ref_message: m.Message, uow: AbstractUnitOfWork
+        self,
+        ref_message: m.BaseMessage,
+        uow: AbstractUnitOfWork,
+        messenger: AbstractMessenger,
     ):
         msg_body = uow.system_messages.get_msg("commmand_not_recognised-success")
-        await self._get_messenger(ref_message.messaging_platform).reply_text(
-            ref_message, msg_body, uow
-        )
+        await messenger.reply_text(ref_message, msg_body, uow)

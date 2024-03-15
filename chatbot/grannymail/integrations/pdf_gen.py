@@ -1,6 +1,5 @@
-from uuid import uuid4
 from io import BytesIO
-from datetime import datetime
+from uuid import uuid4
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -8,6 +7,7 @@ from reportlab.lib.units import inch, mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from grannymail.domain.models import Address
+from grannymail.utils import utils
 
 # Constants for page layout
 PAGE_HEIGHT, PAGE_WIDTH = A4
@@ -97,7 +97,7 @@ def create_and_save_letter(
 if __name__ == "__main__":
     address = Address(
         address_id=str(uuid4()),
-        created_at=str(datetime.utcnow()),
+        created_at=utils.get_utc_timestamp(),
         user_id=str(uuid4()),
         addressee="Pickle Rick",
         address_line1="Pickle Lane 42",

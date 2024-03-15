@@ -1,8 +1,7 @@
 import grannymail.db.tasks as db_tasks
-import grannymail.db.repositories as repos
+from grannymail.services.unit_of_work import SupabaseUnitOfWork
 
 
 def test_synchronise_sheet_with_db():
-    supaclient = repos.create_supabase_client()
-    sm_repo = repos.SystemMessageRepository(supaclient)
-    db_tasks.synchronise_sheet_with_db(sm_repo)
+    uow = SupabaseUnitOfWork()
+    db_tasks.synchronise_sheet_with_db(uow)

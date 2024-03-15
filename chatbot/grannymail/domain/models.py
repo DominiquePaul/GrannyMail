@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import typing as t
-import datetime
 from dataclasses import dataclass, field
 
+import grannymail.constants as c
 from grannymail.integrations.pingen import Pingen
 from grannymail.logger import logger
+from grannymail.utils import utils
 
 if t.TYPE_CHECKING:
     from grannymail.services.unit_of_work import AbstractUnitOfWork
@@ -59,15 +61,18 @@ class User(AbstractDataTableClass):
 
         return " ".join(info_parts)
 
+    def __hash__(self):
+        return hash(self.user_id)
+
 
 @dataclass
-class Message(AbstractDataTableClass):
+class BaseMessage(AbstractDataTableClass):
     # _unique_fields: "message_id"]
     message_id: str = field(kw_only=True)
     user_id: str = field(kw_only=True)
     messaging_platform: t.Literal["WhatsApp", "Telegram"] = field(kw_only=True)
     sent_by: str = field(kw_only=True)
-    message_type: str = field(kw_only=True)
+    message_type: c.types_message = field(kw_only=True)
     timestamp: str = field(kw_only=True)
     # Default params
     message_body: str | None = None
@@ -87,18 +92,24 @@ class Message(AbstractDataTableClass):
             raise ValueError("Attempted to access message_body when it is None")
         return self.message_body
 
+    def __hash__(self):
+        return hash(self.message_id)
+
 
 @dataclass
-class TelegramMessage(Message):
+class TelegramMessage(BaseMessage):
     # _unique_fields: "message_id", "tg_message_id"
     tg_user_id: str = field(kw_only=True)
     tg_chat_id: int = field(kw_only=True)
     tg_message_id: str = field(kw_only=True)
     messaging_platform: t.Literal["WhatsApp", "Telegram"] = "Telegram"
 
+    def __hash__(self):
+        return hash((self.message_id, self.tg_message_id))
+
 
 @dataclass
-class WhatsappMessage(Message):
+class WhatsappMessage(BaseMessage):
     # _unique_fields: "message_id", "wa_mid"
     wa_mid: str | None = None
     wa_webhook_id: str | None = None
@@ -109,6 +120,9 @@ class WhatsappMessage(Message):
     wa_reference_message_user_phone: str | None = field(default=None, kw_only=True)
     messaging_platform: t.Literal["WhatsApp", "Telegram"] = "WhatsApp"
 
+    def __hash__(self):
+        return hash((self.message_id, self.wa_mid))
+
 
 @dataclass
 class File(AbstractDataTableClass):
@@ -117,6 +131,9 @@ class File(AbstractDataTableClass):
     message_id: str
     mime_type: str
     blob_path: str
+
+    def __hash__(self):
+        return hash(self.file_id)
 
 
 @dataclass
@@ -146,6 +163,9 @@ class Address(AbstractDataTableClass):
             ]
         )
 
+    def __hash__(self):
+        return hash(self.address_id)
+
     def to_address_lines(self, include_country: bool) -> list[str]:
         """Converts an address dict to a list of address lines."""
         if self.is_complete_address() is False:
@@ -161,7 +181,7 @@ class Address(AbstractDataTableClass):
             address_lines.append(self.country)
         return address_lines
 
-    def format_address_simple(self) -> str:
+    def format_address_as_string(self) -> str:
         formatted_message = f"{self.addressee}\n" + f"{self.address_line1}\n"
 
         if self.address_line2:
@@ -206,6 +226,9 @@ class Draft(AbstractDataTableClass):
     address_id: str | None
     builds_on: str | None
 
+    def __hash__(self):
+        return hash(self.draft_id)
+
 
 @dataclass
 class Order(AbstractDataTableClass):
@@ -215,32 +238,41 @@ class Order(AbstractDataTableClass):
     draft_id: str
     address_id: str
     message_id: str
-    status: str  # payment_pending, paid, transferred
+    status: t.Literal["payment_pending", "paid", "transferred_to_pingen"]
     payment_type: str  # one_off, credits
+    blob_path: str
 
-    def dispatch(self, uow: AbstractUnitOfWork):
+    def __hash__(self):
+        return hash(self.order_id)
+
+    def dispatch(self, uow: AbstractUnitOfWork) -> bool:
         """Dispatches the order by sending the letter through Pingen.
 
         Args:
             uow (AbstractUnitOfWork): A unit of work handling database operations.
 
+        Returns:
+            bool: True if the letter was sent successfully, False otherwise. If False is returned,
+            this indicates that the letter has already been sent once.
+
         Raises:
             Exception: If the letter cannot be sent.
         """
+        if self.status != "payment_pending":
+            return False
         try:
             pingen_client = Pingen()
-            letter_bytes = uow.drafts_blob.download(self.draft_id)
-            letter_name = (
-                f"order_{self.order_id}_{datetime.datetime.utcnow().isoformat()}.pdf"
-            )
+            letter_bytes = uow.drafts_blob.download(self.blob_path)
+            letter_name = f"order_{self.order_id}_{utils.get_utc_timestamp()}.pdf"
             pingen_client.upload_and_send_letter(letter_bytes, file_name=letter_name)
-            self.status = "transferred"
+            self.status = "transferred_to_pingen"
             uow.orders.update(self)
         except Exception as e:
             logger.error(f"Failed to dispatch order {self.order_id}: {e}")
             raise
 
         logger.info(f"Order {self.order_id} dispatched successfully.")
+        return True
 
 
 @dataclass
@@ -249,11 +281,17 @@ class Attachment(AbstractDataTableClass):
     attachment_id: str
     file_id: str | None = None
 
+    def __hash__(self):
+        return hash(self.attachment_id)
+
 
 @dataclass
 class SystemMessage(AbstractDataTableClass):
     message_identifier: str
     message_body: str
 
+    def __hash__(self):
+        return hash(self.message_identifier)
 
-MessageType = t.TypeVar("MessageType", bound=Message)
+
+MessageType = t.TypeVar("MessageType", bound=BaseMessage)

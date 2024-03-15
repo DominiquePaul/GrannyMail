@@ -1,9 +1,12 @@
 import abc
 from typing import Callable
-import grannymail.db.repositories as repos
-import grannymail.db.blob_repos as blob_repos
+
 import supabase
+
 import grannymail.config as cfg
+import grannymail.db.blob_repos as blob_repos
+import grannymail.db.repositories as repos
+from grannymail.domain import models as m
 
 
 class AbstractUnitOfWork(abc.ABC):
@@ -12,15 +15,15 @@ class AbstractUnitOfWork(abc.ABC):
     This class declares common repository attributes and the essential methods for transaction management.
     """
 
-    users: repos.RepositoryBase
-    messages: repos.RepositoryBase
-    tg_messages: repos.RepositoryBase
-    wa_messages: repos.RepositoryBase
-    files: repos.RepositoryBase
-    addresses: repos.RepositoryBase
-    drafts: repos.RepositoryBase
-    orders: repos.RepositoryBase
-    attachments: repos.RepositoryBase
+    users: repos.RepositoryBase[m.User]
+    messages: repos.RepositoryBase[m.BaseMessage]
+    tg_messages: repos.RepositoryBase[m.TelegramMessage]
+    wa_messages: repos.RepositoryBase[m.WhatsappMessage]
+    files: repos.RepositoryBase[m.File]
+    addresses: repos.RepositoryBase[m.Address]
+    drafts: repos.RepositoryBase[m.Draft]
+    orders: repos.RepositoryBase[m.Order]
+    attachments: repos.RepositoryBase[m.Attachment]
     system_messages: repos.SystemsMessageRepositoryBase
     drafts_blob: blob_repos.BlobRepositoryBase
     files_blob: blob_repos.BlobRepositoryBase

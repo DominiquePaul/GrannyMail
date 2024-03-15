@@ -1,16 +1,28 @@
-from datetime import datetime
 from abc import ABC, abstractmethod
+
 from supabase import Client  # create_client
+
 import grannymail.config as cfg
+from grannymail.utils import utils
 
 
 class BlobRepositoryBase(ABC):
-    @abstractmethod
-    def create_blob_path(self, user_id: str) -> str:
-        pass
+    blob_prefix: str
+
+    def _create_blob_path(self, user_id: str, mime_type: str) -> str:
+
+        file_path = f"{self.blob_prefix}/{user_id}/{utils.get_utc_timestamp()}"
+        if mime_type == "audio/ogg":
+            suffix = ".ogg"
+        elif mime_type == "application/pdf":
+            suffix = ".pdf"
+        else:
+            raise ValueError(f"mime_type {mime_type} not supported for file upload")
+
+        return file_path + suffix
 
     @abstractmethod
-    def upload(self, bytes: bytes, blob_path: str, mime_type: str):
+    def upload(self, bytes: bytes, user_id: str, mime_type: str) -> str:
         pass
 
     @abstractmethod
@@ -29,22 +41,12 @@ class SupabaseBlobStorage(BlobRepositoryBase):
         self.blob_prefix: str
         self.blob_manager = self.client.storage.from_(self.bucket)
 
-    def _get_suffix(self, mime_type: str) -> str:
-        if mime_type == "audio/ogg":
-            return ".ogg"
-        elif mime_type == "application/pdf":
-            return ".pdf"
-        else:
-            raise ValueError(f"mime_type {mime_type} not supported for file upload")
-
-    def create_blob_path(self, user_id: str) -> str:
-        return f"{self.blob_prefix}/{user_id}/{datetime.utcnow().strftime('%Y-%m-%d_%H-%M-%S')}"
-
-    def upload(self, bytes: bytes, blob_path: str, mime_type: str):
-        blob_path += self._get_suffix(mime_type)
+    def upload(self, bytes: bytes, user_id: str, mime_type: str) -> str:
+        blob_path = self._create_blob_path(user_id, mime_type)
         self.blob_manager.upload(
             file=bytes, path=blob_path, file_options={"content-type": mime_type}
         )
+        return blob_path
 
     def download(self, blob_path: str) -> bytes:
         return self.blob_manager.download(blob_path)

@@ -2,9 +2,8 @@ import datetime
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 
-from fastapi import FastAPI, Request, Response, APIRouter
+from fastapi import APIRouter, FastAPI, Request, Response
 from telegram import Update
-from telegram.ext._contexttypes import ContextTypes
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -12,12 +11,14 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.ext._contexttypes import ContextTypes
 
 import grannymail.config as cfg
-from grannymail.logger import logger
 import grannymail.db.tasks as db_tasks
-from grannymail.services.unit_of_work import SupabaseUnitOfWork
+import grannymail.integrations.messengers.telegram as telegram
+from grannymail.logger import logger
 from grannymail.services.message_processing_service import MessageProcessingService
+from grannymail.services.unit_of_work import SupabaseUnitOfWork
 
 router = APIRouter()
 
@@ -64,9 +65,10 @@ async def job_update_system_messages(context: ContextTypes.DEFAULT_TYPE) -> None
 async def handle_voice_text_or_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    messenger = telegram.Telegram()
     with SupabaseUnitOfWork() as uow:
         await MessageProcessingService().receive_and_process_message(
-            uow, update=update, context=context
+            uow, update=update, context=context, messenger=messenger
         )
         logger.info("Successfully handled query")
 

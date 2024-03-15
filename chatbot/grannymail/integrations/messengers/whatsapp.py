@@ -1,8 +1,7 @@
-from uuid import uuid4
 import logging
 import tempfile
+import uuid
 from datetime import datetime
-from grannymail.services.unit_of_work import AbstractUnitOfWork
 
 import httpx
 from fastapi import Request, Response
@@ -11,8 +10,9 @@ from tinytag import TinyTag  # mypy: ignore
 
 import grannymail.config as cfg
 import grannymail.domain.models as m
-from grannymail.utils import message_utils
-from .base import AbstractMessenger
+from grannymail.integrations.messengers.base import AbstractMessenger
+from grannymail.services.unit_of_work import AbstractUnitOfWork
+from grannymail.utils import message_utils, utils
 
 
 class WebhookRequestData(BaseModel):
@@ -101,7 +101,7 @@ class Whatsapp(AbstractMessenger):
         headers = {"Authorization": f"Bearer {self.WHATSAPP_TOKEN}"}
 
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(endpoint, headers=headers)
+            response = await client.get(url=endpoint, headers=headers)
             response.raise_for_status()
             download_url = response.json()["url"]
 
@@ -150,7 +150,7 @@ class Whatsapp(AbstractMessenger):
             "messaging_product": (None, "whatsapp"),
         }
         endpoint: str = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/media"
-        return await self._post_httpx_request(endpoint, files=files)
+        return await self._post_httpx_request(url=endpoint, files=files)
 
     async def process_message(
         self, data: WebhookRequestData, uow: AbstractUnitOfWork
@@ -179,28 +179,34 @@ class Whatsapp(AbstractMessenger):
         Raises:
             ValueError: If the message type is unsupported.
         """
+        webhook_id = data.entry[0]["id"]
         values = data.entry[0]["changes"][0]["value"]
         wa_message = values["messages"][0]
         phone_number = values["contacts"][0]["wa_id"]
-        timestamp = datetime.utcfromtimestamp(int(wa_message["timestamp"])).strftime(
-            "%Y-%m-%d %H:%M:%S.%f"
-        )
+        timestamp = datetime.utcfromtimestamp(int(wa_message["timestamp"])).isoformat()
 
         user = self._get_or_create_user(uow, phone_number, timestamp)
-        message = self._create_message_object(values, wa_message, user, timestamp)
+        message = self._create_message_object(
+            webhook_id, values, wa_message, user, timestamp
+        )
+
+        # needs to be here to not violate foreign key relations for uploading files
+        uow.wa_messages.add(message)
 
         if wa_message["type"] in ["audio", "document", "image"]:
-            await self._process_media_message(wa_message, message)
+            message = await self._process_media_message(wa_message, message, uow)
         elif wa_message["type"] == "interactive":
-            self._process_interactive_message(wa_message, message, user)
+            message = self._process_interactive_message(wa_message, message, uow)
         elif wa_message["type"] == "text":
-            self._process_text_message(wa_message, message)
+            message = self._process_text_message(wa_message, message)
         else:
             raise ValueError(f"Unsupported message type: '{wa_message['type']}'")
 
-        return uow.wa_messages.add(message)
+        return uow.wa_messages.update(message)
 
-    def _get_or_create_user(self, uow, phone_number, timestamp):
+    def _get_or_create_user(
+        self, uow: AbstractUnitOfWork, phone_number: str, timestamp: str
+    ):
         """
         Retrieves an existing user based on the phone number or creates a new user if not found.
 
@@ -212,18 +218,18 @@ class Whatsapp(AbstractMessenger):
         Returns:
             User: The retrieved or newly created user object.
         """
-        user = uow.users.get(id=None, filters={"phone_number": phone_number})
+        user = uow.users.maybe_get_one(id=None, filters={"phone_number": phone_number})
         if user is None:
             user = uow.users.add(
                 m.User(
-                    user_id=str(uuid4()),
+                    user_id=str(uuid.uuid4()),
                     created_at=timestamp,
                     phone_number=phone_number,
                 )
             )
         return user
 
-    def _create_message_object(self, values, wa_message, user, timestamp):
+    def _create_message_object(self, webhook_id, values, wa_message, user, timestamp):
         """
         Creates a WhatsappMessage object from the webhook data.
 
@@ -237,16 +243,15 @@ class Whatsapp(AbstractMessenger):
             WhatsappMessage: The constructed WhatsappMessage object.
         """
         message = m.WhatsappMessage(
-            message_id=str(uuid4()),
+            message_id=str(uuid.uuid4()),
             user_id=user.user_id,
             sent_by="user",
             phone_number=values["contacts"][0]["wa_id"],
             timestamp=timestamp,
             message_type=wa_message["type"],
             wa_mid=wa_message["id"],
-            wa_webhook_id=values["entry"][0][
-                "id"
-            ],  # Corrected to use values instead of data
+            # Corrected to use values instead of data
+            wa_webhook_id=webhook_id,
             wa_phone_number_id=values["metadata"]["phone_number_id"],
             wa_profile_name=values["contacts"][0]["profile"]["name"],
         )
@@ -256,7 +261,9 @@ class Whatsapp(AbstractMessenger):
             message.wa_reference_message_user_phone = context["from"]
         return message
 
-    async def _process_media_message(self, wa_message, message):
+    async def _process_media_message(
+        self, wa_message: dict, message: m.WhatsappMessage, uow: AbstractUnitOfWork
+    ) -> m.WhatsappMessage:
         """
         Processes media messages by setting the attachment MIME type and downloading the media.
 
@@ -271,11 +278,30 @@ class Whatsapp(AbstractMessenger):
         message.wa_media_id = wa_message[message.message_type]["id"]
         assert message.wa_media_id is not None
         media_bytes = await self._download_media(message.wa_media_id)
-        if message.message_type == "audio":
-            duration = self._get_audio_duration(media_bytes)
-            message.memo_duration = duration
 
-    def _process_interactive_message(self, wa_message, message, user):
+        if message.message_type == "audio":
+            message.command = "voice"
+            message.memo_duration = self._get_audio_duration(media_bytes)
+
+        # Upload file bytes and add file record
+        assert message.attachment_mime_type is not None
+        path = uow.files_blob.upload(
+            media_bytes, message.user_id, message.attachment_mime_type
+        )
+        file_record = m.File(
+            file_id=str(uuid.uuid4()),
+            message_id=message.message_id,
+            mime_type=message.attachment_mime_type,
+            blob_path=path,
+        )
+        uow.files.add(file_record)
+
+        # return updates message object
+        return message
+
+    def _process_interactive_message(
+        self, wa_message, message, uow
+    ) -> m.WhatsappMessage:
         """
         Processes interactive messages, specifically button replies, and updates the message object accordingly.
 
@@ -290,7 +316,7 @@ class Whatsapp(AbstractMessenger):
                 f"ID of the response is not a boolean: '{ref_msg_meaning}'"
             )
         message.action_confirmed = True if ref_msg_meaning == "true" else False
-        ref_message = user.messages.maybe_get_one(
+        ref_message = uow.messages.maybe_get_one(
             id=None, filters={"wa_mid": message.wa_reference_wamid}
         )
         if ref_message:
@@ -301,8 +327,9 @@ class Whatsapp(AbstractMessenger):
             error_msg = f"The incoming message referenced a message ID that could not be found:'{message.wa_reference_wamid}'"
             logging.error(error_msg)
             raise ValueError(error_msg)
+        return message
 
-    def _process_text_message(self, wa_message, message):
+    def _process_text_message(self, wa_message, message) -> m.WhatsappMessage:
         """
         Processes text messages by extracting the command and message body.
 
@@ -313,6 +340,7 @@ class Whatsapp(AbstractMessenger):
         command, message_body = message_utils.parse_command(wa_message["text"]["body"])
         message.message_body = message_body
         message.command = command
+        return message
 
     async def reply_text(
         self, ref_message: m.WhatsappMessage, message_body: str, uow: AbstractUnitOfWork
@@ -338,11 +366,11 @@ class Whatsapp(AbstractMessenger):
             "text": {"preview_url": False, "body": message_body},
         }
         url = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
-        r = await self._post_httpx_request(url, data=data)
+        r = await self._post_httpx_request(url=url, data=data)
 
         response = m.WhatsappMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             message_body=message_body,
@@ -385,10 +413,10 @@ class Whatsapp(AbstractMessenger):
             "document": {"filename": filename, "id": media_id},
         }
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
-        r = await self._post_httpx_request(endpoint, data=data)
+        r = await self._post_httpx_request(url=endpoint, data=data)
         response = m.WhatsappMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             attachment_mime_type=mime_type,
@@ -442,11 +470,11 @@ class Whatsapp(AbstractMessenger):
             },
         }
         endpoint = f"https://graph.facebook.com/{self.WHATSAPP_API_VERSION}/{self.WHATSAPP_PHONE_NUMBER_ID}/messages"
-        r = await self._post_httpx_request(endpoint, data=data)
+        r = await self._post_httpx_request(url=endpoint, data=data)
 
         response = m.WhatsappMessage(
-            message_id=str(uuid4()),
-            timestamp=str(datetime.utcnow()),
+            message_id=str(uuid.uuid4()),
+            timestamp=utils.get_utc_timestamp(),
             user_id=ref_message.user_id,
             sent_by="system",
             message_body=main_msg,
@@ -463,4 +491,6 @@ class Whatsapp(AbstractMessenger):
     async def reply_edit_or_text(
         self, ref_message: m.WhatsappMessage, message_body: str, uow
     ) -> m.WhatsappMessage:
-        return await self.reply_text(ref_message, message_body, uow)
+        return await self.reply_text(
+            ref_message=ref_message, message_body=message_body, uow=uow
+        )

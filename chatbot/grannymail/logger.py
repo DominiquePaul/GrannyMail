@@ -1,5 +1,5 @@
-import sys
 import logging
+import sys
 
 # set up logging
 logger = logging.getLogger(__name__)

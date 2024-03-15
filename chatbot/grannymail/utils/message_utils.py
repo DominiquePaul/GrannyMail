@@ -34,12 +34,12 @@ def parse_command(txt: str) -> tuple[str | None, str]:
     if txt.startswith("/"):
         command_end_idx = txt.find(" ")
         if command_end_idx == -1:  # Command only, no additional text
-            return txt[1:], ""
+            return txt[1:].lower(), ""
         command = txt[1:command_end_idx]
         message_text = txt[command_end_idx:].strip()
         return command.lower(), message_text
     else:
-        return "no_command", txt
+        return "_no_command", txt
 
 
 # Address stuff
@@ -100,20 +100,12 @@ def parse_new_address(msg: str, created_at: str, user_id: str) -> m.Address:
 
 
 def format_address_book(addresses: list[m.Address]) -> str:
-    def format_single_message(address: m.Address) -> str:
-        formatted_message = f"{address.addressee}\n" + f"{address.address_line1}\n"
-
-        if address.address_line2:
-            formatted_message += f"{address.address_line2}\n"
-
-        formatted_message += f"{address.zip} {address.city}\n" + f"{address.country}"
-
-        return formatted_message
-
-    address_list = []
-    for idx, add in enumerate(addresses):
-        address_list.append(f"\n{idx+1})\n{format_single_message(add)}\n")
-    return "\n".join(address_list)
+    return "\n".join(
+        [
+            f"\n{idx+1})\n{add.format_address_as_string()}\n"
+            for idx, add in enumerate(addresses)
+        ]
+    )
 
 
 def fetch_closest_address_index(
@@ -231,7 +223,7 @@ async def transcript_to_letter_text(
         str: The letter text
     """
     system_msg = uow.system_messages.get_msg("system-prompt-letter_prompt")
-    user = uow.users.get(user_id)
+    user = uow.users.get_one(user_id)
     optional_user_prompt = ""
     if user.prompt:
         optional_user_prompt = "Additional user instructions: {retrieved_user.prompt}"

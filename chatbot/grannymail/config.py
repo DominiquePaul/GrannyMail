@@ -4,6 +4,8 @@ from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
 
+DEVMODE = os.environ["DEVMODE"]
+
 # Telegram bot
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 BOT_USERNAME = os.environ["BOT_USERNAME"]
@@ -39,6 +41,12 @@ SENTRY_ENDPOINT = os.getenv("SENTRY_ENDPOINT", None)
 STRIPE_API_KEY = os.environ["STRIPE_API_KEY"]
 STRIPE_ENDPOINT_SECRET = os.environ["STRIPE_ENDPOINT_SECRET"]
 
-STRIPE_LINK_SINGLE_PAYMENT = "https://buy.stripe.com/test_5kAaIy5FJ9gUes05kl"
-STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/test_dR66si4BFeBefw47sv"
-STRIPE_LINK_10_CREDITS = "https://buy.stripe.com/test_00gdUK6JN2SwgA83cg"
+if DEVMODE == "PROD":
+    STRIPE_LINK_SINGLE_PAYMENT = "https://buy.stripe.com/bIY4jQ8LfaQBf9m7sx"
+    STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/8wM03A2mR1g1e5i3ck"
+    STRIPE_LINK_10_CREDITS = "https://buy.stripe.com/7sI8A6d1v5wh7GUcMT"
+
+else:
+    STRIPE_LINK_SINGLE_PAYMENT = "https://buy.stripe.com/test_5kAaIy5FJ9gUes05kl"
+    STRIPE_LINK_5_CREDITS = "https://buy.stripe.com/test_00gdUK6JN2SwgA83cg"
+    STRIPE_LINK_10_CREDITS = "https://buy.stripe.com/test_fZeeYOecf1Os83CdQV"
