@@ -22,7 +22,7 @@ def test_handle_event(dispatch_status, fake_uow, user, wa_message, order):
         "data": {
             "object": {
                 "client_reference_id": order.order_id,
-                "payment_link_id": "plink_1Oo9zHLuDIWxSZxaQAbFlPrQ",
+                "payment_link": "plink_1Oo9zHLuDIWxSZxaQAbFlPrQ",
             }
         },
     }

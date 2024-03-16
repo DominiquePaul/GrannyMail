@@ -413,6 +413,11 @@ class MessageProcessingService:
         address_book = uow.addresses.get_all(
             filters={"user_id": ref_message.user_id}, order={"created_at": "asc"}
         )
+        if len(address_book) == 0:
+            msg_body = uow.system_messages.get_msg("delete_address-error-no_addresses")
+            await messenger.reply_text(ref_message, msg_body, uow)
+            return None
+
         try:
             reference_idx = int(ref_message.safe_message_body)
         except ValueError:
@@ -460,13 +465,7 @@ class MessageProcessingService:
         """
         user = uow.users.get_one(ref_message.user_id)
 
-        # 1. Is message empty?
-        if self._is_message_empty(ref_message):
-            msg_body = uow.system_messages.get_msg("send-error-msg_empty")
-            await messenger.reply_text(ref_message, msg_body, uow)
-            return None
-
-        # 2. Is there a previous draft?
+        # 1. Is there a previous draft?
         all_drafts = uow.drafts.get_all(
             filters={"user_id": ref_message.user_id}, order={"created_at": "desc"}
         )
@@ -475,7 +474,7 @@ class MessageProcessingService:
             await messenger.reply_text(ref_message, msg_body, uow)
             return None
 
-        # 3. Does the user have any addresses saved?
+        # 2. Does the user have any addresses saved?
         address_book = uow.addresses.get_all(
             filters={"user_id": ref_message.user_id}, order={"created_at": "asc"}
         )
@@ -483,19 +482,29 @@ class MessageProcessingService:
             msg_body = uow.system_messages.get_msg("send-error-user_has_no_addresses")
             await messenger.reply_text(ref_message, msg_body, uow)
             return None
-
-        # Find closest matching address
-        address_idx = msg_utils.fetch_closest_address_index(
-            ref_message.safe_message_body, address_book
-        )
-        if address_idx == -1:
-            formatted_address_book = msg_utils.format_address_book(address_book)
-            msg_body = uow.system_messages.get_msg(
-                "send-error-no_good_address_match"
-            ).format(formatted_address_book)
-            await messenger.reply_text(ref_message, msg_body, uow)
-            return None
-        address = address_book[address_idx]
+        elif len(address_book) == 1:
+            address = address_book[0]
+        else:
+            # user has multiple addresses
+            # Is message empty?
+            if self._is_message_empty(ref_message):
+                # if yes, then tell user that he needs to specify addressee
+                msg_body = uow.system_messages.get_msg("send-error-msg_empty")
+                await messenger.reply_text(ref_message, msg_body, uow)
+                return None
+            else:
+                # if not find address match
+                address_idx = msg_utils.fetch_closest_address_index(
+                    ref_message.safe_message_body, address_book
+                )
+                if address_idx == -1:
+                    formatted_address_book = msg_utils.format_address_book(address_book)
+                    msg_body = uow.system_messages.get_msg(
+                        "send-error-no_good_address_match"
+                    ).format(formatted_address_book)
+                    await messenger.reply_text(ref_message, msg_body, uow)
+                    return None
+                address = address_book[address_idx]
 
         # Create a letter with the address and the draft text
         last_draft = all_drafts[0]

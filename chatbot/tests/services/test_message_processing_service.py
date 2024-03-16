@@ -75,9 +75,6 @@ async def assert_message_received_correct_responses(
 
     for identifier, insertions in msg_responses.items():
         expected_msg = fake_uow.system_messages.get_msg(identifier).format(*insertions)
-        # It's letter time. Pay for the postage via the link below and your letter will be sent 🪄\n\nYou can also buy credits at a discount using the /buy_credits command 💸💳\n\nhttps://buy.stripe.com/test_5kAaIy5FJ9gUes05kl?client_reference_id=221fc420-d112-42b4-b953-3651e1ad95ad
-        # It's letter time. Pay for the postage via the link below and your letter will be sent 🪄\n\nYou can also buy credits at a discount using the /buy_credits command 💸💳\n\nhttps://buy.stripe.com/test_5kAaIy5FJ9gUes05kl
-
         mock_reply_text.assert_any_await(ANY, expected_msg, fake_uow)
 
     for identifier, insertions in button_responses.items():
@@ -389,7 +386,22 @@ class TestMessageProcessingService:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
-    async def test_handle_delete_address_keyword(
+    async def test_handle_delete_address_doesnt_work_if_no_address(
+        self, platform, fake_uow, user
+    ):
+        fake_uow.users.add(user)
+        await assert_message_received_correct_responses(
+            platform,
+            fake_uow,
+            messages={"message": {"user_msg": "/delete_address Yankee"}},
+            msg_responses={
+                "delete_address-error-no_addresses": [],
+            },
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
+    async def test_handle_delete_address_keyword_happy(
         self, platform, fake_uow, user, address, address2
     ):
         fake_uow.users.add(user)
@@ -448,6 +460,49 @@ class TestMessageProcessingService:
             fake_uow,
             messages={"message": {"user_msg": "/send Doris"}},
             msg_responses={"send-error-no_good_address_match": [address_book]},
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
+    async def test_handle_send_no_keyword(
+        self, platform, fake_uow, user, address, address2, draft
+    ):
+        # /send without keyword with two addresses causes an error
+        fake_uow.users.add(user)
+        fake_uow.addresses.add(address)
+        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+        fake_uow.addresses.add(address2)
+        fake_uow.drafts.add(draft)
+
+        await assert_message_received_correct_responses(
+            platform,
+            fake_uow,
+            messages={"message": {"user_msg": " /send  "}},
+            msg_responses={"send-error-msg_empty": []},
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
+    async def test_handle_send_no_message_one_address_happy(
+        self, platform, fake_uow, user, address, draft
+    ):
+        # Using /send without keyword with only address successfully triggers sending an address
+        user.num_letter_credits = 2
+        fake_uow.users.add(user)
+        fake_uow.addresses.add(address)
+        fake_uow.drafts.add(draft)
+
+        await assert_message_received_correct_responses(
+            platform,
+            fake_uow,
+            messages={"message": {"user_msg": "/send "}},
+            button_responses={
+                "send-success-credits": [
+                    " " + user.first_name,
+                    str(user.num_letter_credits),
+                    address.format_address_as_string(),
+                ]
+            },
         )
 
     @pytest.mark.asyncio
