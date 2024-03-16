@@ -1,5 +1,5 @@
-from difflib import get_close_matches
 import uuid
+from difflib import get_close_matches
 
 import grannymail.domain.models as m
 import grannymail.integrations.pdf_gen as pdf_gen

@@ -43,12 +43,12 @@ async def lifespan(_: FastAPI):
         await ptb.stop()
 
 
-@router.post("/")
+@router.post("/", status_code=200)
 async def process_update(request: Request):
     req = await request.json()
     update = Update.de_json(req, ptb.bot)
     await ptb.process_update(update)
-    return Response(status_code=HTTPStatus.OK)
+    return {"message": "Update processed successfully"}
 
 
 async def job_update_system_messages(context: ContextTypes.DEFAULT_TYPE) -> None:

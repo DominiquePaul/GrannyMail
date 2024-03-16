@@ -1,5 +1,6 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch, AsyncMock
 
 import grannymail.domain.models as m
 import grannymail.integrations.stripe_payments as sp

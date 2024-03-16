@@ -2,6 +2,8 @@ import sentry_sdk
 from fastapi import FastAPI
 
 import grannymail.config as cfg
+from grannymail.services.unit_of_work import SupabaseUnitOfWork
+from grannymail.db.tasks import synchronise_sheet_with_db
 
 from .endpoints import payment, telegram, whatsapp
 
@@ -25,6 +27,13 @@ app = FastAPI(title="GrannyMail", lifespan=telegram.lifespan)
 app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["whatsapp"])
 app.include_router(telegram.router, prefix="/api/telegram", tags=["telegram"])
 app.include_router(payment.router, prefix="/api/payment", tags=["payment"])
+
+
+@app.get("/update_messages", status_code=200)
+def update_messages_success():
+    with SupabaseUnitOfWork() as uow:
+        synchronise_sheet_with_db(uow)
+    return {"content": "messages updated"}
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
+from unittest.mock import ANY, patch
+
 import pytest
-from unittest.mock import patch, ANY
+
 from grannymail.entrypoints.api.endpoints.payment import process_stripe_event
 
 

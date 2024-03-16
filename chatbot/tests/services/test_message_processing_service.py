@@ -1,16 +1,16 @@
+import asyncio
 import typing as t
 from datetime import timedelta
-import asyncio
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, call, patch
 
 import pytest
 
+import grannymail.config as cfg
 import tests.utils as utils
 from grannymail.integrations.messengers import telegram, whatsapp
 from grannymail.services.message_processing_service import MessageProcessingService
 from grannymail.utils import message_utils
 from grannymail.utils.utils import get_utc_timestamp
-import grannymail.config as cfg
 
 # test most functions -> ideally use codiume
 

@@ -10,16 +10,16 @@ from grannymail.services.unit_of_work import SupabaseUnitOfWork
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("/", status_code=200)
 async def verify_route(request: Request):
     return whatsapp.fastapi_verify(request)
 
 
-@router.post("/")
+@router.post("/", status_code=200)
 async def webhook_route(data: WebhookRequestData):
     if data.entry[0].get("changes", [{}])[0].get("value", {}).get("statuses"):
         logger.info("WA status update")
-        return JSONResponse(content="ok", status_code=200)
+        return JSONResponse(content="ok")
     else:
         try:
             with SupabaseUnitOfWork() as uow:
@@ -28,7 +28,7 @@ async def webhook_route(data: WebhookRequestData):
                     uow, data=data, messenger=messenger
                 )
                 logger.info("Successfully handled query")
-            return JSONResponse(content="ok", status_code=200)
+            return JSONResponse(content="ok")
         except Exception as e:
             logger.error(f"An error occurred: {e}")
             return JSONResponse(content="Internal Server Error", status_code=500)

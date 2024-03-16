@@ -1,7 +1,9 @@
 import pytest
+
 from grannymail.entrypoints.api.endpoints.whatsapp import webhook_route
-from .utils import _create_whatsapp_text_message
+
 from .fake_repositories import FakeUnitOfWork
+from .utils import _create_whatsapp_text_message
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,10 @@ def synchronise_sheet_with_db(uow: AbstractUnitOfWork):
 
         # get data from google spreadhsheet and filter out columns that are not in the spreadsheet
         system_message_df = get_message_spreadsheet()
+        # drop any empty rows
+        system_message_df = system_message_df.replace("", float("NaN"))
+        system_message_df.dropna(inplace=True)
+        # filter out columns that are not in the spreadsheet
         system_message_df = system_message_df[
             [col for col in column_names if col in system_message_df.columns]
         ]
