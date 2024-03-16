@@ -18,7 +18,8 @@
   <!-- • <a href="https://github.com/lukasmasuch/streamlit-pydantic/releases">Changelog</a> -->
 </p>
 
-# Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
+# Turn WhatsApp and Telegram voice memos into physical letters and send them without leaving the chat
+### Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
 
 WhatsGranny is a whatsapp tool that enables easy communication with people who cannot use whatsapp and prefer pen and paper. Share your thoughts via voice message and WhatsGranny will summarise them as a letter and send it to your loved one by mail.
 
