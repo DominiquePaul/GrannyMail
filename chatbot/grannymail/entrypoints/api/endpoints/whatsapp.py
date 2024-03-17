@@ -31,4 +31,6 @@ async def webhook_route(data: WebhookRequestData):
             return JSONResponse(content="ok")
         except Exception as e:
             logger.error(f"An error occurred: {e}")
-            return JSONResponse(content="Internal Server Error", status_code=500)
+            # we still send a 200 status code, because we don't want any retries from the Whatsapp API
+            # as this can cause unexpected issues.
+            return JSONResponse(content="ok", status_code=200)

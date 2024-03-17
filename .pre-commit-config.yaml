@@ -21,3 +21,13 @@ repos:
 #     rev: 'v5.10.1'
 #     hooks:
 #     -   id: isort
+# -   repo: local
+#     hooks:
+#     -   id: pytest
+#         name: pytest
+#         entry: bash -c 'cd chatbot && source ./venv/bin/activate && pytest -p no:warnings .'
+#         language: system
+#         files: '.*\.py$'
+#         stages: [commit]
+#         pass_filenames: false
+#         always_run: true
