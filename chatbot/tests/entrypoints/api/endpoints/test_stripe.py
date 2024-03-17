@@ -12,7 +12,6 @@ from grannymail.entrypoints.api.endpoints.payment import process_stripe_event
 async def test_process_stripe_event(
     mock_handle_event, platform, was_dispatched, fake_uow, wa_message, tg_message
 ):
-
     # setup
     ref_message = wa_message if platform == "WhatsApp" else tg_message
     mock_handle_event.return_value = (was_dispatched, ref_message, 10, 12)

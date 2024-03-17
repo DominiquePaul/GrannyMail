@@ -433,7 +433,6 @@ class TestMessageProcessingService:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
     async def test_handle_send_no_addresses(self, platform, fake_uow, user, draft):
-
         fake_uow.users.add(user)
         fake_uow.drafts.add(draft)
         await assert_message_received_correct_responses(

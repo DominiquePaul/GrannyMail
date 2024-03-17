@@ -10,7 +10,6 @@ class BlobRepositoryBase(ABC):
     blob_prefix: str
 
     def _create_blob_path(self, user_id: str, mime_type: str) -> str:
-
         file_path = f"{self.blob_prefix}/{user_id}/{utils.get_utc_timestamp()}"
         if mime_type == "audio/ogg":
             suffix = ".ogg"

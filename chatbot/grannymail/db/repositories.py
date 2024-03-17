@@ -4,10 +4,9 @@ from dataclasses import asdict, fields
 from typing import Generic, TypeVar
 
 import supabase
+from grannymail.domain import models as m
 from postgrest._sync.request_builder import SyncSelectRequestBuilder
 from supabase import Client
-
-from grannymail.domain import models as m
 
 T = TypeVar("T", bound=m.AbstractDataTableClass)
 
@@ -89,7 +88,6 @@ class SupabaseRepository(RepositoryBase[T]):
         return {k: v for k, v in data.items() if k in field_names}
 
     def add(self, entity: T) -> T:
-
         try:
             resp = self.client.table(self.__table__).insert(asdict(entity)).execute()
         except supabase.PostgrestAPIError as e:
@@ -148,7 +146,12 @@ class SupabaseRepository(RepositoryBase[T]):
         if id is not None:
             filters[self.__id_col__] = id
         query = self._get(filters, order)
-        response = query.single().execute()
+        try:
+            response = query.single().execute()
+        except:
+            raise ValueError(
+                "Multiple responses when trying to use .single(). Info: Table: {self.__table__}id = {id}, filters = {filters}, order = {order}. "
+            )
         filtered_data = self._filter_data_for_class(response.data, self.__data_type__)
         return self.__data_type__(**filtered_data)
 
