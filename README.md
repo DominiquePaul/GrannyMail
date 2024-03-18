@@ -10,13 +10,13 @@
     <a href="https://twitter.com/DominiqueCAPaul" title="Follow on Twitter"><img src="https://img.shields.io/twitter/follow/dominiquecapaul.svg?style=social&label=Follow"></a>
 </p>
 
-<p align="center">
+<!-- <p align="center">
   <a href="#getting-started">Getting Started</a> •
   <a href="#documentation">Documentation</a> •
   <a href="#support--feedback">Support</a> •
   <a href="#contribution">Contribution</a>
   <!-- • <a href="https://github.com/lukasmasuch/streamlit-pydantic/releases">Changelog</a> -->
-</p>
+</p> -->
 
 # Turn WhatsApp and Telegram voice memos into physical letters and send them without leaving the chat
 ### Keep in touch with you grandma via Whatsapp - even if she doesn't have a phone 👵🏼
