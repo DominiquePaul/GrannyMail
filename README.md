@@ -28,8 +28,8 @@ WhatsGranny is a whatsapp tool that enables easy communication with people who c
 
 ## How to use the chatbot
 
-![Instructions part 1](instructions_image1.png)
-![Instructions part 2](instructions_image2.png)
+![Instructions part 1](instructions_image1.jpg)
+![Instructions part 2](instructions_image2.jpg)
 
 
 ## Support & Feedback
