@@ -114,6 +114,7 @@ class Telegram(AbstractMessenger):
             update,
             message_id,  # todo this should be a unique value
         )
+        uow.tg_messages.add(message)
 
         if message_type == "interactive":
             assert (
@@ -130,7 +131,7 @@ class Telegram(AbstractMessenger):
         else:
             raise ValueError(f"Unhandled message type: '{message_type}'")
 
-        return uow.tg_messages.add(message)
+        return uow.tg_messages.update(message)
 
     def _extract_timestamp_and_id(self, update: Update) -> tuple[str, int]:
         """Extracts timestamp and message ID from the update."""
@@ -203,7 +204,8 @@ class Telegram(AbstractMessenger):
         if not message_replied_to.command:
             raise ValueError("No command associated with replied-to message")
         message.response_to = query_data["mid"]
-        message.action_confirmed = True if query_data["conf"] == "true" else False
+        assert isinstance(query_data["conf"], bool), "Conf value is not a boolean"
+        message.action_confirmed = query_data["conf"]
         message.command = f"{message_replied_to.command}_callback"
         return message
 
@@ -289,7 +291,7 @@ class Telegram(AbstractMessenger):
             response_to=ref_message.message_id,
             tg_user_id=ref_message.tg_user_id,
             tg_chat_id=r.chat_id,
-            tg_message_id=r.chat_id + "-" + str(r.message_id),
+            tg_message_id=str(r.chat_id) + "-" + str(r.message_id),
         )
         return uow.tg_messages.add(response)
 
@@ -318,7 +320,7 @@ class Telegram(AbstractMessenger):
             response_to=ref_message.message_id,
             tg_user_id=ref_message.tg_user_id,
             tg_chat_id=r.chat_id,
-            tg_message_id=r.chat_id + "-" + str(r.message_id),
+            tg_message_id=str(r.chat_id) + "-" + str(r.message_id),
         )
         return uow.tg_messages.add(response)
 

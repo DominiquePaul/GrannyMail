@@ -35,7 +35,6 @@ async def process_stripe_event(event, uow):
     msg = uow.system_messages.get_msg(msg_id).format(credits_bought, user_credits)
 
     # Determine the messenger so we reply on the platform on which we got the message
-    platform = ref_message.messaging_platform
     if isinstance(ref_message, m.WhatsappMessage):
         messenger = whatsapp.Whatsapp()
         await messenger.reply_text(ref_message, msg, uow)
@@ -43,7 +42,7 @@ async def process_stripe_event(event, uow):
         messenger = telegram.Telegram()
         await messenger.reply_text(ref_message, msg, uow)
     else:
-        raise ValueError(f"Message platform {platform} not found")
+        raise ValueError(f"Message platform {type(ref_message)} not found")
 
 
 @router.post("/stripe_webhook")

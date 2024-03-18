@@ -219,8 +219,9 @@ def create_callback_message(
             reference_message_id, action_confirmed
         )
     elif platform == "Telegram":
+        action_confirmed_bool = True if action_confirmed == "true" else False
         update, context = create_telegram_callback_message(
-            reference_message_id, action_confirmed
+            reference_message_id, action_confirmed_bool
         )
     else:
         raise ValueError("Platform {platform} is not a valid input")
@@ -254,9 +255,7 @@ def create_whatsapp_callback_message(
     )
 
 
-def _get_telegram_callback_request(
-    reference_message_id: str, action_confirmed: t.Literal["true", "false"]
-):
+def _get_telegram_callback_request(reference_message_id: str, action_confirmed: bool):
     return {
         "update_id": 195209714,
         "callback_query": {
@@ -307,9 +306,7 @@ def _get_telegram_callback_request(
     }
 
 
-def create_telegram_callback_message(
-    reference_mid: str, action_confirmed: t.Literal["true", "false"]
-):
+def create_telegram_callback_message(reference_mid: str, action_confirmed: bool):
     tg_message = _get_telegram_callback_request(reference_mid, action_confirmed)
     mock_update = create_mock_update(tg_message)
     # mock_update.message.date = ""

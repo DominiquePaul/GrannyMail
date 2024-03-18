@@ -81,9 +81,11 @@ def handle_event(
     # this could/should be edited in the uow repository but this is the only occurrence in the codebase so far.
     og_message_base = uow.messages.get_one(order.message_id)
     if og_message_base.messaging_platform == "WhatsApp":
-        og_message = uow.wa_messages.get_one(order.message_id)
+        og_message: t.Union[
+            m.WhatsappMessage, m.TelegramMessage
+        ] = uow.wa_messages.get_one(order.message_id)
     elif og_message_base.messaging_platform == "Telegram":
-        og_message = uow.wa_messages.get_one(order.message_id)
+        og_message = uow.tg_messages.get_one(order.message_id)
     else:
         raise ValueError(
             f"Unsupported message platform: {og_message_base.messaging_platform}"

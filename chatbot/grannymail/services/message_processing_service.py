@@ -272,12 +272,13 @@ class MessageProcessingService:
             address_id=old_draft.address_id,
             builds_on=old_draft.draft_id,
         )
+
         draft = uow.drafts.add(draft)
 
         # Send the new draft to the user
         await messenger.reply_document(
             ref_message,
-            file_data=new_draft_bytes,
+            new_draft_bytes,
             filename="draft_updated.pdf",
             mime_type="application/pdf",
             uow=uow,
@@ -602,11 +603,23 @@ class MessageProcessingService:
             assert (
                 response_to_og_send_message.order_referenced is not None
             ), "No order referenced in message"
+
+            # fetch and dispatch order
             order: m.Order = uow.orders.get_one(
                 response_to_og_send_message.order_referenced
             )
-            order.dispatch(uow=uow)
-            msg_body = uow.system_messages.get_msg("send_callback-confirm")
+            was_dispatched = order.dispatch(uow=uow)
+            if was_dispatched:
+                # reduce users credit count
+                user = uow.users.get_one(order.user_id)
+                user.num_letter_credits -= 1
+                uow.users.update(user)
+                msg_body = uow.system_messages.get_msg("send_callback-confirm")
+            else:
+                # not sure how this might happen
+                msg_body = uow.system_messages.get_msg(
+                    "send_callback-error-no-dispatch"
+                )
 
         else:
             msg_body = uow.system_messages.get_msg("send_callback-cancel")

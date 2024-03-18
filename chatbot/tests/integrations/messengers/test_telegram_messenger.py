@@ -46,7 +46,7 @@ class TestTelegramMessenger:
 
         mock_uuid4.return_value = "00000000-0000-0000-0000-000000000000"
         update, context = utils.create_telegram_callback_message(
-            tg_message.message_id, "true"
+            tg_message.message_id, True
         )
 
         # call

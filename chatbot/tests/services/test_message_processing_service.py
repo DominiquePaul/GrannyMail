@@ -301,6 +301,10 @@ class TestMessageProcessingService:
         reference_message_id = (
             response[0].message_id if platform == "Telegram" else response[0].wa_mid
         )
+        if platform == "WhatsApp":
+            action_confirmed = "true"
+        else:
+            action_confirmed = True
 
         await assert_message_received_correct_responses(
             platform,
@@ -308,7 +312,7 @@ class TestMessageProcessingService:
             messages={
                 "callback": {
                     "reference_message_id": reference_message_id,
-                    "action_confirmed": "true",
+                    "action_confirmed": action_confirmed,
                 }
             },
             edit_text_responses={"add_address_callback-confirm": []},
@@ -593,6 +597,10 @@ class TestMessageProcessingService:
         reference_message_id = (
             responses[0].message_id if platform == "Telegram" else responses[0].wa_mid
         )
+        if platform == "WhatsApp":
+            action_confirmed = "true"
+        else:
+            action_confirmed = True
 
         await assert_message_received_correct_responses(
             platform,
@@ -600,7 +608,7 @@ class TestMessageProcessingService:
             messages={
                 "callback": {
                     "reference_message_id": reference_message_id,
-                    "action_confirmed": "true",
+                    "action_confirmed": action_confirmed,
                 }
             },
             edit_text_responses={"send_callback-confirm": []},
@@ -633,13 +641,18 @@ class TestMessageProcessingService:
             responses[0].message_id if platform == "Telegram" else responses[0].wa_mid
         )
 
+        if platform == "WhatsApp":
+            action_confirmed = "false"
+        else:
+            action_confirmed = False
+
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
             messages={
                 "callback": {
                     "reference_message_id": reference_message_id,
-                    "action_confirmed": "false",
+                    "action_confirmed": action_confirmed,
                 }
             },
             edit_text_responses={"send_callback-cancel": []},
