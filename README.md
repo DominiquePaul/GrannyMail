@@ -15,7 +15,6 @@
   <a href="#documentation">Documentation</a> •
   <a href="#support--feedback">Support</a> •
   <a href="#contribution">Contribution</a>
-  <!-- • <a href="https://github.com/lukasmasuch/streamlit-pydantic/releases">Changelog</a> -->
 </p> -->
 
 # Turn WhatsApp and Telegram voice memos into physical letters and send them without leaving the chat
