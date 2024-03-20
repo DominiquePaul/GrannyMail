@@ -13,6 +13,8 @@ from grannymail.integrations.messengers.whatsapp import WebhookRequestData
 from grannymail.utils import utils
 from grannymail.utils.message_utils import parse_new_address
 from tests.fake_repositories import FakeUnitOfWork
+from grannymail.services.unit_of_work import SupabaseUnitOfWork
+import grannymail.config as cfg
 
 load_dotenv(find_dotenv())
 
@@ -21,7 +23,25 @@ load_dotenv(find_dotenv())
 
 @pytest.fixture
 def fake_uow():
-    yield FakeUnitOfWork()
+    # yield Supabase()
+    db = SupabaseUnitOfWork()
+    # delete all table contents
+    tables_to_id_col = {
+        "users": "user_id",
+        "messages": "message_id",
+        "files": "file_id",
+        "addresses": "address_id",
+        "drafts": "draft_id",
+        "orders": "order_id",
+    }
+    client = db.session_factory()
+    for table, id_col in tables_to_id_col.items():
+        client.table(table).delete().neq(id_col, uuid4()).execute()
+
+    # delete all bucket contents
+    client.storage.empty_bucket(cfg.SUPABASE_BUCKET_NAME)
+
+    yield db
 
 
 @pytest.fixture()
@@ -106,6 +126,7 @@ def order(user, address, draft, wa_message) -> t.Generator[m.Order, None, None]:
         message_id=wa_message.message_id,
         draft_id=draft.draft_id,
         blob_path="no_real_path",
+        created_at=wa_message.timestamp,
     )
 
 

@@ -540,6 +540,7 @@ class MessageProcessingService:
             status="payment_pending",
             payment_type=payment_type,
             blob_path=draft.blob_path,
+            created_at=ref_message.timestamp,
         )
         uow.orders.add(order)
 

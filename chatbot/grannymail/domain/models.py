@@ -241,6 +241,7 @@ class Order(AbstractDataTableClass):
     status: t.Literal["payment_pending", "paid", "transferred_to_pingen"]
     payment_type: str  # one_off, credits
     blob_path: str
+    created_at: str
 
     def __hash__(self):
         return hash(self.order_id)

@@ -7,7 +7,9 @@ import grannymail.integrations.stripe_payments as sp
 
 
 @pytest.mark.parametrize("dispatch_status", [True, False])
-def test_handle_event(dispatch_status, fake_uow, user, wa_message, order):
+def test_handle_event(
+    dispatch_status, fake_uow, user, wa_message, address, draft, order
+):
     if dispatch_status:
         order.status = "payment_pending"
     else:
@@ -15,6 +17,8 @@ def test_handle_event(dispatch_status, fake_uow, user, wa_message, order):
     with fake_uow:
         fake_uow.users.add(user)
         fake_uow.wa_messages.add(wa_message)
+        fake_uow.addresses.add(address)
+        fake_uow.drafts.add(draft)
         fake_uow.orders.add(order)
 
     # Set up the event

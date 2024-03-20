@@ -16,7 +16,7 @@ class TestRepositoryBase:
 
 
 def get_time():
-    return "2024-03-11T23:53:24.355013"
+    return "2024-01-26T17:17:17.123+00:00"
 
 
 class TestUserRepository:

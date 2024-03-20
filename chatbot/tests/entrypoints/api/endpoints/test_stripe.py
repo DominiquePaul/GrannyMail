@@ -19,15 +19,16 @@ async def test_process_stripe_event(
     # call
     messenger_module = "whatsapp" if platform == "WhatsApp" else "telegram"
     messenger_class = "Whatsapp" if platform == "WhatsApp" else "Telegram"
-    with patch(
-        f"grannymail.integrations.messengers.{messenger_module}.{messenger_class}.reply_text"
-    ) as mock_messenger:
-        await process_stripe_event({}, fake_uow)
+    with fake_uow:
+        with patch(
+            f"grannymail.integrations.messengers.{messenger_module}.{messenger_class}.reply_text"
+        ) as mock_messenger:
+            await process_stripe_event({}, fake_uow)
 
-    # assertions
-    if was_dispatched:
-        msg_id = "stripe_webhook-success"
-    else:
-        msg_id = "stripe_webhook-success-no_dispatch"
-    msg = fake_uow.system_messages.get_msg(msg_id).format(10, 12)
-    mock_messenger.assert_called_once_with(ANY, msg, fake_uow)
+        # assertions
+        if was_dispatched:
+            msg_id = "stripe_webhook-success"
+        else:
+            msg_id = "stripe_webhook-success-no_dispatch"
+        msg = fake_uow.system_messages.get_msg(msg_id).format(10, 12)
+        mock_messenger.assert_called_once_with(ANY, msg, fake_uow)

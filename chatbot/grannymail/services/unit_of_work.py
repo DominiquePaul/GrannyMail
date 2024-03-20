@@ -64,9 +64,9 @@ class SupabaseUnitOfWork(AbstractUnitOfWork):
         self.session_factory: Callable = self.create_client
 
     @staticmethod
-    def create_client() -> supabase.Client:
+    def create_client() -> supabase.Client:  # type: ignore
         """Creates and returns a Supabase client using the application configuration."""
-        return supabase.create_client(cfg.SUPABASE_URL, cfg.SUPABASE_KEY)
+        return supabase.create_client(cfg.SUPABASE_URL, cfg.SUPABASE_KEY)  # type: ignore
 
     def __enter__(self):
         client = self.session_factory()

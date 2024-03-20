@@ -17,7 +17,7 @@ def generate_whatsapp_httpx_response(start_id=1000):
         start_id += 1
 
 
-def create_mock_update(data: dict) -> Update:
+def create_mock_update(data: dict, username="mike_mockowitz") -> Update:
     """
     Factory function to create a mock Update object from a given data dictionary.
     """
@@ -65,7 +65,7 @@ def create_text_message(platform: str, user_msg: str):
     return whatsapp_data, update, context
 
 
-def _get_base_wa_message(messages):
+def _get_base_wa_message(messages, phone_number="491515222222"):
     return WebhookRequestData(
         object="whatsapp_business_account",
         entry=[
@@ -76,13 +76,13 @@ def _get_base_wa_message(messages):
                         "value": {
                             "messaging_product": "whatsapp",
                             "metadata": {
-                                "display_phone_number": "15551291301",
+                                "display_phone_number": phone_number,
                                 "phone_number_id": "196914110180497",
                             },
                             "contacts": [
                                 {
                                     "profile": {"name": "Mike Mockowitz"},
-                                    "wa_id": "491515222222",
+                                    "wa_id": phone_number,
                                 }
                             ],
                             "messages": messages,
@@ -211,17 +211,19 @@ def _create_tg_voice_memo_msg():
 def create_callback_message(
     platform: str,
     reference_message_id: str,
-    action_confirmed: t.Literal["true", "false"],
+    action_confirmed: bool,
 ):
+    action_confirmed_str: t.Literal["true", "false"] = (
+        "true" if action_confirmed else "false"
+    )
     whatsapp_data, update, context = None, None, None
     if platform == "WhatsApp":
         whatsapp_data = create_whatsapp_callback_message(
-            reference_message_id, action_confirmed
+            reference_message_id, action_confirmed_str
         )
     elif platform == "Telegram":
-        action_confirmed_bool = True if action_confirmed == "true" else False
         update, context = create_telegram_callback_message(
-            reference_message_id, action_confirmed_bool
+            reference_message_id, action_confirmed
         )
     else:
         raise ValueError("Platform {platform} is not a valid input")
@@ -229,17 +231,19 @@ def create_callback_message(
 
 
 def create_whatsapp_callback_message(
-    reference_message_id: str, action_confirmed: t.Literal["true", "false"]
+    reference_message_id: str,
+    action_confirmed: t.Literal["true", "false"],
+    phone_number="491515222222",
 ):
     title = "✅" if action_confirmed == "true" else "❌"
     return _get_base_wa_message(
         [
             {
                 "context": {
-                    "from": "491515222222",
+                    "from": phone_number,
                     "id": reference_message_id,
                 },
-                "from": "4915159926162",
+                "from": phone_number,
                 "id": "wamid.HBgNNDkxNTE1OTkyNjE2MhUCABIYFDNBQzk0NUREMERBQkVEMDI3MUZBAA==",
                 "timestamp": "1706312529",
                 "type": "interactive",
@@ -251,11 +255,14 @@ def create_whatsapp_callback_message(
                     },
                 },
             }
-        ]
+        ],
+        phone_number,
     )
 
 
-def _get_telegram_callback_request(reference_message_id: str, action_confirmed: bool):
+def _get_telegram_callback_request(
+    reference_message_id: str, action_confirmed: bool, username="mike_mockowitz"
+):
     return {
         "update_id": 195209714,
         "callback_query": {
@@ -265,7 +272,7 @@ def _get_telegram_callback_request(reference_message_id: str, action_confirmed: 
                 "is_bot": False,
                 "first_name": "Mike",
                 "last_name": "Mockowitz",
-                "username": "mike_mockowitz",
+                "username": username,
                 "language_code": "en",
             },
             "message": {
@@ -280,7 +287,7 @@ def _get_telegram_callback_request(reference_message_id: str, action_confirmed: 
                     "id": 1234,
                     "first_name": "Mike",
                     "last_name": "Mockowitz",
-                    "username": "mike_mockowitz",
+                    "username": username,
                     "type": "private",
                 },
                 "date": 1707447364,
@@ -306,8 +313,12 @@ def _get_telegram_callback_request(reference_message_id: str, action_confirmed: 
     }
 
 
-def create_telegram_callback_message(reference_mid: str, action_confirmed: bool):
-    tg_message = _get_telegram_callback_request(reference_mid, action_confirmed)
+def create_telegram_callback_message(
+    reference_mid: str, action_confirmed: bool, username="mike_mockowitz"
+):
+    tg_message = _get_telegram_callback_request(
+        reference_mid, action_confirmed, username=username
+    )
     mock_update = create_mock_update(tg_message)
     # mock_update.message.date = ""
     mock_context = AsyncMock()  # Mock the context

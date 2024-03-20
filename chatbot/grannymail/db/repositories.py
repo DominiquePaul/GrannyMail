@@ -6,7 +6,7 @@ from typing import Generic, TypeVar
 import supabase
 from grannymail.domain import models as m
 from postgrest._sync.request_builder import SyncSelectRequestBuilder
-from supabase import Client
+from supabase import Client  # type: ignore
 
 T = TypeVar("T", bound=m.AbstractDataTableClass)
 
@@ -90,7 +90,7 @@ class SupabaseRepository(RepositoryBase[T]):
     def add(self, entity: T) -> T:
         try:
             resp = self.client.table(self.__table__).insert(asdict(entity)).execute()
-        except supabase.PostgrestAPIError as e:
+        except supabase.PostgrestAPIError as e:  # type: ignore
             if e.code == "23505":
                 raise DuplicateEntryError(
                     f"Failed to add entity: {e.message}. {e.details}"

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from supabase import Client  # create_client
+from supabase import Client  # type: ignore
 
 import grannymail.config as cfg
 from grannymail.utils import utils

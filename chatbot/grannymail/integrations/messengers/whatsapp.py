@@ -183,7 +183,8 @@ class Whatsapp(AbstractMessenger):
         values = data.entry[0]["changes"][0]["value"]
         wa_message = values["messages"][0]
         phone_number = values["contacts"][0]["wa_id"]
-        timestamp = datetime.utcfromtimestamp(int(wa_message["timestamp"])).isoformat()
+        timestamp = utils.get_utc_timestamp()
+        # datetime.utcfromtimestamp(int(wa_message["timestamp"])).isoformat()
 
         user = self._get_or_create_user(uow, phone_number, timestamp)
         message = self._create_message_object(

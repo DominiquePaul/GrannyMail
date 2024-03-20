@@ -22,13 +22,16 @@
 
 WhatsGranny is a whatsapp tool that enables easy communication with people who cannot use whatsapp and prefer pen and paper. Share your thoughts via voice message and WhatsGranny will summarise them as a letter and send it to your loved one by mail.
 
-![Demo](demo.gif)
+
+
+[![Chat on Whatsapp](readme_files/chat_on_whatsapp.png)](https://wa.me/4915252692713)
+![Demo](readme_files/demo.gif)
 
 
 ## How to use the chatbot
 
-![Instructions part 1](instructions_image1.jpg)
-![Instructions part 2](instructions_image2.jpg)
+![Instructions part 1](readme_files/instructions_image1.jpg)
+![Instructions part 2](readme_files/instructions_image2.jpg)
 
 
 ## Support & Feedback

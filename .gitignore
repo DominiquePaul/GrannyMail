@@ -15,6 +15,10 @@ services/database
 .vscode/**
 database_config
 
+.snaplet
+.snaplet/**
+
+
 ### Remainder is the default python .gitignore file by github
 
 

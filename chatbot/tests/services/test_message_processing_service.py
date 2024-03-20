@@ -39,62 +39,73 @@ async def assert_message_received_correct_responses(
 
     responses = []
 
-    with patch(
-        patch_target, new_callable=AsyncMock, return_value=patch_return_value
-    ) as mock_patch, patch(
-        "telegram._callbackquery.CallbackQuery.answer", new_callable=AsyncMock
-    ) as mock_callback_answer:
-        with patch.object(
-            messenger, "reply_text", new=AsyncMock()
-        ) as mock_reply_text, patch.object(
-            messenger, "reply_edit_or_text", new=AsyncMock()
-        ) as mock_reply_edit_or_text, patch.object(
-            messenger, "_download_media", new=AsyncMock(return_value=voice_memo_bytes)
-        ) as mock_download_media, patch.object(
-            messenger, "reply_document", new=AsyncMock()
-        ) as mock_reply_document:
-            # iterate over message calls
-            for message_type, kwargs in messages.items():
-                if message_type == "message":
-                    wa_data, update, context = utils.create_text_message(
-                        platform, **kwargs
-                    )
-                elif message_type == "callback":
-                    wa_data, update, context = utils.create_callback_message(
-                        platform, **kwargs
-                    )
-                elif message_type == "voice":
-                    wa_data, update, context = utils.create_voice_memo_msg(platform)
-                else:
-                    raise ValueError("Message type not recognized")
+    with fake_uow:
+        with patch(
+            patch_target, new_callable=AsyncMock, return_value=patch_return_value
+        ) as mock_patch, patch(
+            "telegram._callbackquery.CallbackQuery.answer", new_callable=AsyncMock
+        ) as mock_callback_answer:
+            with patch.object(
+                messenger, "reply_text", new=AsyncMock()
+            ) as mock_reply_text, patch.object(
+                messenger, "reply_edit_or_text", new=AsyncMock()
+            ) as mock_reply_edit_or_text, patch.object(
+                messenger,
+                "_download_media",
+                new=AsyncMock(return_value=voice_memo_bytes),
+            ) as mock_download_media, patch.object(
+                messenger, "reply_document", new=AsyncMock()
+            ) as mock_reply_document:
+                # iterate over message calls
+                for message_type, kwargs in messages.items():
+                    if message_type == "message":
+                        wa_data, update, context = utils.create_text_message(
+                            platform, **kwargs
+                        )
+                    elif message_type == "callback":
+                        wa_data, update, context = utils.create_callback_message(
+                            platform, **kwargs
+                        )
+                    elif message_type == "voice":
+                        wa_data, update, context = utils.create_voice_memo_msg(platform)
+                    else:
+                        raise ValueError("Message type not recognized")
 
-                response = await MessageProcessingService().receive_and_process_message(
-                    fake_uow, messenger, update, context, wa_data
+                    response = (
+                        await MessageProcessingService().receive_and_process_message(
+                            fake_uow, messenger, update, context, wa_data
+                        )
+                    )
+                    responses.append(response)
+
+        for identifier, insertions in msg_responses.items():
+            expected_msg = fake_uow.system_messages.get_msg(identifier).format(
+                *insertions
+            )
+            mock_reply_text.assert_any_await(ANY, expected_msg, fake_uow)
+
+        for identifier, insertions in button_responses.items():
+            expected_msg = fake_uow.system_messages.get_msg(identifier).format(
+                *insertions
+            )
+            # callback case
+            if platform == "Telegram":
+                mock_patch.assert_any_await(
+                    chat_id=ANY, reply_markup=ANY, text=expected_msg
                 )
-                responses.append(response)
+            elif platform == "WhatsApp":
+                assert (
+                    mock_patch.call_args.kwargs["data"]["interactive"]["body"]["text"]
+                    == expected_msg
+                )
+            else:
+                raise ValueError("Platform not recognized")
 
-    for identifier, insertions in msg_responses.items():
-        expected_msg = fake_uow.system_messages.get_msg(identifier).format(*insertions)
-        mock_reply_text.assert_any_await(ANY, expected_msg, fake_uow)
-
-    for identifier, insertions in button_responses.items():
-        expected_msg = fake_uow.system_messages.get_msg(identifier).format(*insertions)
-        # callback case
-        if platform == "Telegram":
-            mock_patch.assert_any_await(
-                chat_id=ANY, reply_markup=ANY, text=expected_msg
+        for identifier, insertions in edit_text_responses.items():
+            expected_msg = fake_uow.system_messages.get_msg(identifier).format(
+                *insertions
             )
-        elif platform == "WhatsApp":
-            assert (
-                mock_patch.call_args.kwargs["data"]["interactive"]["body"]["text"]
-                == expected_msg
-            )
-        else:
-            raise ValueError("Platform not recognized")
-
-    for identifier, insertions in edit_text_responses.items():
-        expected_msg = fake_uow.system_messages.get_msg(identifier).format(*insertions)
-        mock_reply_edit_or_text.assert_any_await(ANY, expected_msg, fake_uow)
+            mock_reply_edit_or_text.assert_any_await(ANY, expected_msg, fake_uow)
 
     if sent_document:
         mock_reply_document.assert_awaited_once()
@@ -226,9 +237,11 @@ class TestMessageProcessingService:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
-    async def test_handle_edit_happy(self, platform, fake_uow, user, draft):
-        fake_uow.users.add(user)
-        fake_uow.drafts.add(draft)
+    async def test_handle_edit_happy(self, platform, fake_uow, user, draft, address):
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -254,8 +267,9 @@ class TestMessageProcessingService:
     async def test_handle_show_address_book_happy(
         self, platform, fake_uow, user, address
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
         add_book = message_utils.format_address_book([address])
         first_name = address.addressee.split(" ")[0]
         await assert_message_received_correct_responses(
@@ -270,7 +284,8 @@ class TestMessageProcessingService:
     async def test_handle_add_address(
         self, platform, fake_uow, user, address_string_correct, address
     ):
-        fake_uow.users.add(user)
+        with fake_uow:
+            fake_uow.users.add(user)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -287,7 +302,8 @@ class TestMessageProcessingService:
     async def test_handle_add_address_callback(
         self, platform, fake_uow, user, address_string_correct, address
     ):
-        fake_uow.users.add(user)
+        with fake_uow:
+            fake_uow.users.add(user)
         response = await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -301,10 +317,6 @@ class TestMessageProcessingService:
         reference_message_id = (
             response[0].message_id if platform == "Telegram" else response[0].wa_mid
         )
-        if platform == "WhatsApp":
-            action_confirmed = "true"
-        else:
-            action_confirmed = True
 
         await assert_message_received_correct_responses(
             platform,
@@ -312,7 +324,7 @@ class TestMessageProcessingService:
             messages={
                 "callback": {
                     "reference_message_id": reference_message_id,
-                    "action_confirmed": action_confirmed,
+                    "action_confirmed": True,
                 }
             },
             edit_text_responses={"add_address_callback-confirm": []},
@@ -323,10 +335,11 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_no_message(
         self, platform, fake_uow, user, address, address2
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
-        fake_uow.addresses.add(address2)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -339,10 +352,11 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_invalid_idx(
         self, platform, fake_uow, user, address, address2
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
-        fake_uow.addresses.add(address2)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -355,10 +369,11 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_very_bad_keyword(
         self, platform, fake_uow, user, address, address2
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
-        fake_uow.addresses.add(address2)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -371,11 +386,12 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_integer(
         self, platform, fake_uow, user, address, address2
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
 
-        fake_uow.addresses.add(address2)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -393,7 +409,8 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_doesnt_work_if_no_address(
         self, platform, fake_uow, user
     ):
-        fake_uow.users.add(user)
+        with fake_uow:
+            fake_uow.users.add(user)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -408,10 +425,11 @@ class TestMessageProcessingService:
     async def test_handle_delete_address_keyword_happy(
         self, platform, fake_uow, user, address, address2
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp()
-        fake_uow.addresses.add(address2)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp()
+            fake_uow.addresses.add(address2)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -437,8 +455,10 @@ class TestMessageProcessingService:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("platform", ["WhatsApp", "Telegram"])
     async def test_handle_send_no_addresses(self, platform, fake_uow, user, draft):
-        fake_uow.users.add(user)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            fake_uow.users.add(user)
+            draft.address_id = None
+            fake_uow.drafts.add(draft)
         await assert_message_received_correct_responses(
             platform,
             fake_uow,
@@ -451,11 +471,12 @@ class TestMessageProcessingService:
     async def test_handle_send_bad_keyword(
         self, platform, fake_uow, user, address, address2, draft
     ):
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
-        fake_uow.addresses.add(address2)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
+            fake_uow.drafts.add(draft)
         address_book = message_utils.format_address_book([address, address2])
 
         await assert_message_received_correct_responses(
@@ -470,12 +491,13 @@ class TestMessageProcessingService:
     async def test_handle_send_no_keyword(
         self, platform, fake_uow, user, address, address2, draft
     ):
-        # /send without keyword with two addresses causes an error
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
-        fake_uow.addresses.add(address2)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            # /send without keyword with two addresses causes an error
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            address2.created_at = get_utc_timestamp(delta=timedelta(days=1))
+            fake_uow.addresses.add(address2)
+            fake_uow.drafts.add(draft)
 
         await assert_message_received_correct_responses(
             platform,
@@ -489,11 +511,12 @@ class TestMessageProcessingService:
     async def test_handle_send_no_message_one_address_happy(
         self, platform, fake_uow, user, address, draft
     ):
-        # Using /send without keyword with only address successfully triggers sending an address
-        user.num_letter_credits = 2
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            # Using /send without keyword with only address successfully triggers sending an address
+            user.num_letter_credits = 2
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
 
         await assert_message_received_correct_responses(
             platform,
@@ -514,10 +537,11 @@ class TestMessageProcessingService:
     async def test_handle_send_no_credits(
         self, uuid, platform, fake_uow, user, address, draft
     ):
-        uuid.return_value = "221fc420-d112-42b4-b953-3651e1ad95ad"
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            uuid.return_value = "221fc420-d112-42b4-b953-3651e1ad95ad"
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
 
         full_stripe_link1 = (
             cfg.STRIPE_LINK_SINGLE_PAYMENT
@@ -553,10 +577,11 @@ class TestMessageProcessingService:
     async def test_handle_send_purchase_with_credits(
         self, platform, fake_uow, user, address, draft
     ):
-        user.num_letter_credits = 2
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            user.num_letter_credits = 2
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
 
         await assert_message_received_correct_responses(
             platform,
@@ -576,10 +601,11 @@ class TestMessageProcessingService:
     async def test_handle_send_with_credits_callback_confirm(
         self, platform, fake_uow, user, address, draft
     ):
-        user.num_letter_credits = 2
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            user.num_letter_credits = 2
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
 
         responses = await assert_message_received_correct_responses(
             platform,
@@ -597,10 +623,7 @@ class TestMessageProcessingService:
         reference_message_id = (
             responses[0].message_id if platform == "Telegram" else responses[0].wa_mid
         )
-        if platform == "WhatsApp":
-            action_confirmed = "true"
-        else:
-            action_confirmed = True
+        action_confirmed = True
 
         await assert_message_received_correct_responses(
             platform,
@@ -619,10 +642,11 @@ class TestMessageProcessingService:
     async def test_handle_send_with_credits_callback_cancel(
         self, platform, fake_uow, user, address, draft
     ):
-        user.num_letter_credits = 2
-        fake_uow.users.add(user)
-        fake_uow.addresses.add(address)
-        fake_uow.drafts.add(draft)
+        with fake_uow:
+            user.num_letter_credits = 2
+            fake_uow.users.add(user)
+            fake_uow.addresses.add(address)
+            fake_uow.drafts.add(draft)
 
         responses = await assert_message_received_correct_responses(
             platform,
@@ -640,11 +664,7 @@ class TestMessageProcessingService:
         reference_message_id = (
             responses[0].message_id if platform == "Telegram" else responses[0].wa_mid
         )
-
-        if platform == "WhatsApp":
-            action_confirmed = "false"
-        else:
-            action_confirmed = False
+        action_confirmed = False
 
         await assert_message_received_correct_responses(
             platform,
@@ -657,6 +677,3 @@ class TestMessageProcessingService:
             },
             edit_text_responses={"send_callback-cancel": []},
         )
-
-
-# test with instant payment

@@ -99,7 +99,8 @@ class Telegram(AbstractMessenger):
         assert update.effective_user is not None
         assert update.effective_user.username is not None
         telegram_id: str = update.effective_user.username
-        timestamp, message_id = self._extract_timestamp_and_id(update)
+        message_id = self._extract_id(update)
+        timestamp = utils.get_utc_timestamp()
 
         user = self._get_or_create_user(uow, telegram_id, update, timestamp)
 
@@ -133,21 +134,15 @@ class Telegram(AbstractMessenger):
 
         return uow.tg_messages.update(message)
 
-    def _extract_timestamp_and_id(self, update: Update) -> tuple[str, int]:
+    def _extract_id(self, update: Update) -> int:
         """Extracts timestamp and message ID from the update."""
-        if bool(update.message):
-            return update.message.date.isoformat(), update.message.message_id
-        elif bool(update.callback_query):
-            assert update.callback_query.message is not None, "no message"
-            return (
-                update.callback_query.message.date.isoformat(),
-                update.callback_query.message.message_id,
-            )
-        else:
-            assert update.callback_query is not None
-            assert update.callback_query.id is not None
+        if update.message is not None:
+            return update.message.message_id
+        elif update.callback_query is not None:
             assert update.callback_query.message is not None
-            return utils.get_utc_timestamp(), update.callback_query.message.id
+            return update.callback_query.message.id
+        else:
+            raise ValueError("No message or callback found")
 
     def _get_or_create_user(
         self, uow: AbstractUnitOfWork, telegram_id: str, update: Update, timestamp: str

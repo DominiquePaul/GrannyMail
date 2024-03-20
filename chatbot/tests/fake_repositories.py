@@ -5,11 +5,9 @@ from grannymail.db.blob_repos import BlobRepositoryBase
 from grannymail.db.repositories import (
     RepositoryBase,
     SystemMessageRepository,
-    SystemsMessageRepositoryBase,
     T,
 )
 from grannymail.services.unit_of_work import AbstractUnitOfWork, SupabaseUnitOfWork
-from grannymail.utils import utils
 
 
 class FakeRepoBase(RepositoryBase[T]):
