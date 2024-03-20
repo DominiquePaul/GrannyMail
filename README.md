@@ -25,6 +25,7 @@ WhatsGranny is a whatsapp tool that enables easy communication with people who c
 
 
 [![Chat on Whatsapp](readme_files/chat_on_whatsapp.png)](https://wa.me/4915252692713)
+<br>
 ![Demo](readme_files/demo.gif)
 
 
