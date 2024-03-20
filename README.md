@@ -30,7 +30,9 @@ WhatsGranny is a whatsapp tool that enables easy communication with people who c
 
 <br>
 
-![Demo](readme_files/demo.gif)
+<p align="center">
+  <img src="readme_files/demo.gif" alt="Demo">
+</p>
 
 
 ## How to use the chatbot
